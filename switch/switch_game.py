@@ -5,10 +5,10 @@ Switch game
 This class manages the state of the Switch game among multiple agents.
 
 Actions:
-0 = Nothing
 1 = On
 2 = Off
 3 = Tell
+4 = Nothing
 
 """
 import numpy as np
@@ -20,10 +20,10 @@ class SwitchGame:
 
 	def __init__(self, opt):
 		self.game_actions = DotDic({
-			'NOTHING': 0,
 			'ON': 1,
 			'OFF': 2,
-			'TELL': 3
+			'TELL': 3,
+			'NOTHING': 4,
 		})
 
 		self.game_states = DotDic({
@@ -80,14 +80,14 @@ class SwitchGame:
 			bound = self.opt.game_action_space
 			for b in xrange(self.opt.bs):
 				if self.active_agent[b][step] == agent:
-					action_range[b] = np.array([0, self.opt.game_action_space - 1])
+					action_range[b] = np.array([1, self.opt.game_action_space])
 
 			return action_range
 		else:
 			comm_range = np.zeros((self.opt.bs, 2))
 			for b in xrange(self.opt.bs):
 				if self.active_agent[b][step] == agent:
-					action_range[b] = np.array([0, self.opt.game_action_space - 1])
+					action_range[b] = np.array([1, self.opt.game_action_space])
 					comm_range[b] = np.array(
 						[self.opt.game_action_space, self.opt.game_action_space_total])
 
