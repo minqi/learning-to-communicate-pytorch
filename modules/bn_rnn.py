@@ -17,13 +17,12 @@ class GRUCell(nn.Module):
 class LSTMCell(nn.Module):
 
 	def __init__(self, input_size, hidden_size, w_ih=None, w_hh=None, b=None, dropout_rate=0.0, use_bn=True):
-		super(LSTM, self).__init__()
+		super(LSTMCell, self).__init__()
 		self.input_size = input_size
 		self.hidden_size = hidden_size
 		self.w_ih = w_ih
 		self.w_hh = w_hh
-		self.b_ih = b_ih
-		self.b_hh = b_hh
+		self.b = b
 		self.dropout_rate = dropout_rate
 		self.use_bn = use_bn
 		self.reset_params()
@@ -31,11 +30,13 @@ class LSTMCell(nn.Module):
 	def reset_params(self):
 		all_gate_size = 4*self.hidden_size
 		if not self.w_ih:
-			self.w_ih = init.orthogonal(torch.Tensor(all_gate_size, self.input_size))
+			self.w_ih = nn.Parameter(
+				nn.init.orthogonal(torch.Tensor(all_gate_size, self.input_size)))
 		if not self.w_hh:
-			self.w_hh = init.orthogonal(torch.Tensor(all_gate_size, self.input_size))
+			self.w_hh = nn.Parameter(
+				nn.init.orthogonal(torch.Tensor(all_gate_size, self.input_size)))
 		if not self.b:
-			self.b = torch.zeros(all_gate_size)
+			self.b = nn.Parameter(torch.zeros(all_gate_size))
 
 	def forward(self, x, hidden, t=0):
 		c, h = hidden
@@ -56,7 +57,7 @@ class LSTMCell(nn.Module):
 class RNN(nn.Module):
 
 	def __init__(self, mode, input_size, hidden_size, num_layers=1, dropout_rate=0, use_bn=True):
-		super(StackedRNN, self).__init__()
+		super(RNN, self).__init__()
 
 		self.input_size = input_size
 		self.hidden_size = hidden_size
@@ -69,28 +70,49 @@ class RNN(nn.Module):
 			raise Exception('Unknown mode: {}'.format(mode))
 
 		self.layers = []
-		for i in xrange(num_layers):
-			layers.append(cell(input_size, hidden_size, dropout_rate=dropout_rate, use_bn=use_bn))
+		for i in range(num_layers):
+			layer = cell(input_size, hidden_size, dropout_rate=dropout_rate, use_bn=use_bn)
+			self.layers.append(layer)
+			setattr(self, 'layer_{}'.format(i), layer) # so torch will discover params
 
 	def reset_params(self):
 		for layer in self.layers:
 			layer.reset_params()
 
-	def cell_forward(self, cell, x, length, hidden)
-		pass
+	@staticmethod
+	def layer_forward(self, layer, x, lengths, hidden):
+		max_t = x.size(1)
+		out = []
+		for t in range(max_t):
+			c_next, h_next = layer(x, hidden, t)
+			mask = (t < lengths).float().unsqueeze(1).expand_as(h_next)
+			c_next = c_next*mask + hidden[0]*(1 - mask)
+			h_next = h_next*mask + hidden[1]*(1 - mask)
+			hidden_next = (c_next, h_next)
+			out.append(h_next)
+			hidden = hidden_next
+		out = torch.stack(output, 0)
+		return output, hidden
 
-	def forward(self, x, hidden=None, t=0):
+	def forward(self, x, lengths=None, hidden=None, t=0):
 		batch_size, max_t = x.size()
+
+		if not lengths:
+			lengths = torch.LongTensor([max_t] * batch_size)
 		if not hidden:
 			hidden = Variable(torch.zero(batch_size, self.hidden_size))
+			hidden = (hidden, hidden)
 
 		c = []
 		h = []
 		layer_out = None
 		for layer in self.layers:
-			layer_out, (layer_c, layer_h) = self.cell_forward()
+			layer_out, (layer_c, layer_h) = self.layer_forward(layer, x, lengths, hidden)
+			c.append(layer_c)
+			h.append(layer_h)
+			x = layer_out
 
-
-
-
+		c = torch.stack(c, 0)
+		h = torch.stack(h, 0)
+		return out, (c, h)
 
