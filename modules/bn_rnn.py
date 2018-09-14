@@ -2,6 +2,7 @@ import numpy as np
 import torch
 from torch import nn
 from torch.nn import functional as F
+from torch.autograd import Variable
 
 
 class RecurrentBatchNorm(nn.Module):
@@ -31,17 +32,18 @@ class LSTMCell(nn.Module):
 		all_gate_size = 4*self.hidden_size
 		if not self.w_ih:
 			self.w_ih = nn.Parameter(
-				nn.init.orthogonal(torch.Tensor(all_gate_size, self.input_size)))
+				nn.init.orthogonal_(torch.Tensor(all_gate_size, self.input_size)))
 		if not self.w_hh:
 			self.w_hh = nn.Parameter(
-				nn.init.orthogonal(torch.Tensor(all_gate_size, self.input_size)))
+				nn.init.orthogonal_(torch.Tensor(all_gate_size, self.hidden_size)))
 		if not self.b:
 			self.b = nn.Parameter(torch.zeros(all_gate_size))
 
 	def forward(self, x, hidden, t=0):
 		c, h = hidden
-		gates = F.linear(x, self.w_ih, 0) + F.linear(h, self.w_hh, 0) + self.b
+		batch_bias = self.b.expand(x.size(0), *self.b.size())
 
+		gates = F.linear(x, self.w_ih) + F.linear(h, self.w_hh) + batch_bias
 		forgetgate, ingate, outgate, cellgate = gates.chunk(4, 1)
 
 		forgetgate = torch.sigmoid(forgetgate)
@@ -80,25 +82,25 @@ class RNN(nn.Module):
 			layer.reset_params()
 
 	@staticmethod
-	def layer_forward(self, layer, x, lengths, hidden):
+	def layer_forward(layer, x, lengths, hidden):
 		max_t = x.size(1)
 		out = []
 		for t in range(max_t):
-			c_next, h_next = layer(x, hidden, t)
+			c_next, h_next = layer(x[:,t], hidden, t)
 			mask = (t < lengths).float().unsqueeze(1).expand_as(h_next)
 			c_next = c_next*mask + hidden[0]*(1 - mask)
 			h_next = h_next*mask + hidden[1]*(1 - mask)
 			hidden_next = (c_next, h_next)
 			out.append(h_next)
 			hidden = hidden_next
-		out = torch.stack(output, 0)
-		return output, hidden
+		out = torch.stack(out, 1)
+		return out, hidden
 
 	def forward(self, x, lengths=None, hidden=None, t=0):
-		batch_size, max_t = x.size()
+		batch_size, max_t, _ = x.size()
 
 		if not lengths:
-			lengths = torch.LongTensor([max_t] * batch_size)
+			lengths = Variable(torch.LongTensor([max_t] * batch_size))
 		if not hidden:
 			hidden = Variable(torch.zero(batch_size, self.hidden_size))
 			hidden = (hidden, hidden)
@@ -106,13 +108,14 @@ class RNN(nn.Module):
 		c = []
 		h = []
 		layer_out = None
-		for layer in self.layers:
-			layer_out, (layer_c, layer_h) = self.layer_forward(layer, x, lengths, hidden)
+		for i, layer in enumerate(self.layers):
+			layer_out, (layer_c, layer_h) = RNN.layer_forward(layer, x, lengths, hidden)
 			c.append(layer_c)
 			h.append(layer_h)
 			x = layer_out
 
 		c = torch.stack(c, 0)
 		h = torch.stack(h, 0)
-		return out, (c, h)
+
+		return layer_out, (c, h)
 
