@@ -10,5 +10,7 @@ class SwitchCNet:
 	def __init__(self):
 		pass
 
-	
+	def create_agent(self):
+		pass
+
 	

@@ -43,8 +43,6 @@ class RecurrentBatchNorm(nn.Module):
 		mean_t = getattr(self, 'mean_{}'.format(t))
 		var_t = getattr(self, 'var_{}'.format(t))
 
-		# import pdb; pdb.set_trace()
-
 		return F.batch_norm(
 			input=x, running_mean=mean_t, running_var=var_t,
 			weight=self.weight, bias=self.bias,
@@ -53,6 +51,7 @@ class RecurrentBatchNorm(nn.Module):
 
 
 class GRUCell(nn.Module):
+
 	def __init__(
 		self, input_size, hidden_size, w_ih=None, w_hh=None, b_ih=None, b_hh=None, 
 		use_bn=True, bn_max_t=0):
