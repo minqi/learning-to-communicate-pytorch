@@ -60,7 +60,7 @@ class SwitchCNet(nn.Module):
 		self.outputs.add_module('linear2', nn.Linear(opt.model_rnn_size, opt.game_action_space_total))
 
 		self.reset_params()
-	
+
 	def _reset_linear_module(self, 	layer):
 		layer.weight.data.uniform_(*self.init_param_range)
 		layer.bias.data.uniform_(*self.init_param_range)
