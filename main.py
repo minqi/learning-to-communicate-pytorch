@@ -1,4 +1,5 @@
 from utils.dotdic import DotDic
+from switch.switch_cnet import SwitchCNet
 
 """
 
@@ -31,10 +32,26 @@ opt = DotDic({
 	'cuda': 0
 })
 
-# Create agents
+def init_action_and_comm_bits(opt):
+	if not opt.model_comm_narrow and opt.game_comm_bits > 0:
+		opt.game_comm_bits = 2 ** opt.game_comm_bits
 
-# Set-up aux vectors
+	if opt.game_comm_bits > 0 and opt.game_nagents > 1:
+		opt.game_action_space_total = opt.game_action_space + opt.game_comm_bits
+	else:
+		opt.game_action_space_total = opt.game_action_space
 
-# Iterate episodes
+def main(opt):
+	init_action_and_comm_bits(opt)
 
-# Report model statistics
+	# Create agents
+	agent = SwitchCNet(opt)
+	
+
+	# Iterate episodes
+
+	# Report model statistics
+
+if __name__ == '__main__':
+	main(opt)
+

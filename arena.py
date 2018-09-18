@@ -3,7 +3,6 @@ import torch
 
 from modules.dru import DRU
 
-
 class Arena:
 	def __init__(self, opt, game):
 		self.opt = opt

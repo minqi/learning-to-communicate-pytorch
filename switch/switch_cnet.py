@@ -27,23 +27,27 @@ class SwitchCNet(nn.Module):
 
 		# Action aware
 		if opt.model_action_aware:
-			self.prev_action_lookup = nn.Embedding(self.total_action_space, opt.model_rnn_size)
+			if opt.model_dial:
+				self.prev_action_lookup = nn.Embedding(opt.game_action_space_total + 1, opt.model_rnn_size)
+			else:
+				self.prev_action_lookup = nn.Embedding(opt.game_action_space + 1, opt.model_rnn_size)
+				self.prev_message_lookup = nn.Embedding(opt.game_comm_bits + 1, opt.model_rnn_size)
 
 		# Communication enabled
 		# Note if SwitchCNet is training, DRU should add noise + non-linearity
 		# If SwitchCnet is executing in test mode, DRU should discretize messages
 		if opt.game_comm_bits > 0 and opt.game_nagents > 1:
 			self.messages_mlp = nn.Sequential()
-			if opt.model_bn:
-				self.messages_mlp.add_module('batchnorm1', nn.BatchNormalization(comm_size))
-			self.messages_mlp.add_module('linear1', nn.Linear(comm_size, opt.model_rnn_size))
+			if opt.model_dial and opt.model_bn:
+				self.messages_mlp.add_module('batchnorm1', nn.BatchNorm1d(self.comm_size))
+			self.messages_mlp.add_module('linear1', nn.Linear(self.comm_size, opt.model_rnn_size))
 			if opt.model_comm_narrow:
 				self.messages_mlp.add_module('relu1', nn.ReLU(inplace=True))
 
 		# Set up RNN
 		rnn_mode = opt.model_rnn or 'gru'
 		dropout_rate = opt.model_rnn_dropout_rate or 0
-		self.rnn = bn_rnn.RNN(
+		self.rnn = RNN(
 			mode=rnn_mode, input_size=opt.model_rnn_size, hidden_size=opt.model_rnn_size, 
 			num_layers=2, use_bn=True, bn_max_t=16, dropout_rate=dropout_rate)
 
@@ -62,21 +66,26 @@ class SwitchCNet(nn.Module):
 		layer.bias.data.uniform_(*self.init_param_range)
 
 	def reset_params(self):
-		self.agent_lookup.fill_(*self.init_param_range)
-		self.state_lookup.fill_(*self.init_param_range)
-		self.prev_action_lookup.fill_(*self.init_param_range)
+		self.agent_lookup.weight.data.uniform_(*self.init_param_range)
+		self.state_lookup.weight.data.uniform_(*self.init_param_range)
+		self.prev_action_lookup.weight.data.uniform_(*self.init_param_range)
+		self.prev_message_lookup.weight.data.uniform_(*self.init_param_range)
 		self._reset_linear_module(self.messages_mlp.linear1)
 		self.rnn.reset_params()
 		self._reset_linear_module(self.outputs.linear1)
 		self._reset_linear_module(self.outputs.linear2)
 
 	def forward(self, agent_index, observation, prev_action, messages):
+		z_a, z_o, z_u, z_m = [0]*4
 		z_a = self.agent_lookup(agent_index)
 		z_o = self.state_lookup(observation)
-		z_u = self.prev_action_lookup(prev_action)
+		if opt.model_action_aware:
+			z_u = self.prev_action_lookup(prev_action)
+			if opt.model_dial:
+				z_u += self.prev_message_lookup(messages[:, agent_index])
 		z_m = self.messages_mlp(messages.view(-1, self.comm_size).contiguous())
 
-		z = z_a + z_0 + z_u + z_m
+		z = z_a + z_o + z_u + z_m
 
 		model_rnn_size = self.opt.model_rnn_size
 		rnn_out, _ = self.rnn(z)
