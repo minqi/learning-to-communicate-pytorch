@@ -36,7 +36,7 @@ class SwitchCNet(nn.Module):
 		# Communication enabled
 		# Note if SwitchCNet is training, DRU should add noise + non-linearity
 		# If SwitchCnet is executing in test mode, DRU should discretize messages
-		if opt.game_comm_bits > 0 and opt.game_nagents > 1:
+		if opt.comm_enabled:
 			self.messages_mlp = nn.Sequential()
 			if opt.model_dial and opt.model_bn:
 				self.messages_mlp.add_module('batchnorm1', nn.BatchNorm1d(self.comm_size))
@@ -75,20 +75,22 @@ class SwitchCNet(nn.Module):
 		self._reset_linear_module(self.outputs.linear1)
 		self._reset_linear_module(self.outputs.linear2)
 
-	def forward(self, agent_index, observation, prev_action, messages):
+	def forward(self, s_t, messages, hidden, prev_action, agent_index):
 		z_a, z_o, z_u, z_m = [0]*4
 		z_a = self.agent_lookup(agent_index)
 		z_o = self.state_lookup(observation)
 		if opt.model_action_aware:
+			if not opt.model_dial:
+				prev_action, prev_message = prev_action
 			z_u = self.prev_action_lookup(prev_action)
-			if opt.model_dial:
+			if prev_message:
 				z_u += self.prev_message_lookup(messages[:, agent_index])
 		z_m = self.messages_mlp(messages.view(-1, self.comm_size).contiguous())
 
 		z = z_a + z_o + z_u + z_m
 
 		model_rnn_size = self.opt.model_rnn_size
-		rnn_out, _ = self.rnn(z)
+		rnn_out, _ = self.rnn(z, hidden)
 		outputs = self.outputs(rnn_out[:, -1, :])
 
-		return outputs
+		return rnn_out, outputs

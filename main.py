@@ -5,10 +5,9 @@ from switch.switch_game import SwitchGame
 from switch.switch_cnet import SwitchCNet
 
 """
-
 Play communication games
-
 """
+
 # configure opts for Switch game with 3 DIAL agents
 opt = DotDic({
 	'game': 'switch',
@@ -29,6 +28,7 @@ opt = DotDic({
 	'model_rnn_dropout_rate': 0,
 	'bs': 32,
 	'learningrate': 5e-4,
+	'eps': 0.05,
 	'nepisodes': 5000,
 	'step': 100,
 	'step_test': 10,
@@ -38,6 +38,9 @@ opt = DotDic({
 })
 
 def init_action_and_comm_bits(opt):
+	opt.episode_steps = opt.train_mode and opt.nsteps + 1 or opt.nsteps
+	opt.comm_enabled = opt.game_comm_bits > 0 and opt.game_ngents > 1
+
 	opt.model_comm_narrow = opt.model_dial
 	if opt.model_rnn == 'lstm':
 		opt.model_rnn_states = 2*opt.model_rnn_layers
@@ -68,6 +71,15 @@ def create_cnet(opt):
 	else:
 		raise Exception('Unknown game: {}'.format(game_name))
 
+def create_agents(opt):
+	agents = [None] # 1-index agents
+	cnet = create_cnet(opt)
+	for i in range(1, opt.game_nagents + 1):
+		agents.append(DQRNNAgent(opt, model=cnet, index=i))
+		if not opt.model_know_share:
+			cnet = create_cnet(opt)
+	return agents
+
 def main(opt):
 	# Initialize action and comm bit settings
 	opt = init_action_and_comm_bits(opt)
@@ -76,12 +88,7 @@ def main(opt):
 	game = create_game(opt)
 
 	# Create agents
-	agents = []
-	cnet = create_cnet(opt)
-	for a in range(opt.game_nagents):
-		agents.append(DQRNNAgent(opt, model=cnet, index=a))
-		if not opt.model_know_share:
-			cnet = create_cnet(opt)
+	agents = create_agents(opt)
 
 	# Create arena
 	arena = Arena(opt, game)

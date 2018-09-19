@@ -21,53 +21,108 @@ class Arena:
 		episode.non_comm_count = 0
 		episode.step_records = []
 
-		episode.d_err = torch.zeros(opt.bs, opt.game_action_space_total)
-		episode.td_err = torch.zeros(opt.bs)
-		episode.td_comm_err = torch.zeros(opt.bs)
-
 		return episode
 
-	def create_step_record(self, s_t):
+	def create_step_record(self):
 		opt = self.opt
 		record = DotDic({})
-		record.state_t = state_t
+		record.state_t = 0 
 		record.terminal = torch.zeros(opt.bs)
 
+		# Track actions at time t per agent
 		record.a_t = torch.zeros(opt.bs, opt.game_nagents)
-		if opt.model_dial:
+		if not opt.model_dial:
 			record.a_comm_t = torch.zeros(opt.bs, opt.game_nagents)
 
-		# Initialize comm channel
-		if opt.game_comm_bits > 0 and opt.game_nagents > 1:
+		# Track messages sent at time t per agent
+		if opt.comm_enabled:
 			record.comm = torch.zeros(opt.bs, opt.game_nagents, opt.game_comm_bits)
 			if opt.model_dial and opt.model_target
 				record.comm_target = record.comm.clone()
 		record.d_comm = torch.zeros(opt.bs, opt.game_nagents, opt.game_comm_bits)
 
-	def select_action(self):
-		pass
+		# Track q_t and q_t_max per agent
+		record.q_a = torch.zeros(opt.bs, opt.game_agents)
+		record.q_a_max = torch.zeros(opt.bs, opt.game_agents)
 
 	def run_episode(self, *agents, train_mode=False):
 		opt = self.opt
 		game = self.game
 		game.reset()
 
-		num_steps = train_mode and opt.nsteps + 1 or opt.nsteps
 		step = 0
 		episode = self.create_episode()
-		episode[step] = self.create_step_record(s_t=game.get_state()) 
-		while step < num_steps and episode.ended.sum() < opt.bs:
+		s_t = game.get_state()
+		episode.step_records.append(self.create_step_record())
+		episode.step_records[-1].s_t = s_t 
+		while step < opt.episode_steps and episode.ended.sum() < opt.bs:
+			episode.step_records.append(self.create_step_record())
 
-			# Iterate agents
-			for i in opt.game_nagents:
-				pass
+			for i in range(1, opt.game_nagents + 1):
+				# Get received messages per agent per batch
+				agent_inputs = [s_t]
+				comm = None
+				if opt.comm_enabled:
+					comm = episode.step_records[step].comm.clone()
+					comm_limited = self.game.get_comm_limited(step, i)
+					if comm_limited:
+						comm_lim = torch.zeros(opt.bs, 1, opt.game_comm_bits)
+						if not comm_limited:
+							comm_lim.zero_()
+						else:
+							for b in range(opt.bs):
+								comm_lim[b] = comm[b][comm_lim[b]]
+						comm = comm_lim
+					else:
+						comm[:, i].zero_()
 
-			step += 1
-			episode[step] = self.create_step_record(s_t=game.get_state())
+				# Get prev action per batch
+				prev_action = None
+				if opt.model_action_aware:
+					prev_action = torch.zeros(opt.bs)
+					if step > 1:
+						prev_action = episode.step_records[step - 1].a_t[:, i]
+					if not opt.model_dial:
+						prev_message = torch.zeros(opt.bs)
+						if step > 1:
+							prev_message = episode_step_records[step - 1].a_comm_t[:, i]
+						prev_action = (prev_action, prev_message)
+
+				# Batch agent index for input into model
+				batch_agent_index = torch.zeros(opt.bs).fill_(i)
+
+				agent_inputs = [
+					s_t,
+					comm,
+					agents[i].hidden_t[step], # Hidden state
+					prev_action,
+					batch_agent_index
+				]
+
+				# Compute model ouput (Q function + message bits)
+				hidden_t, q_t = agents[i].model(*inputs)
+				agents[i].hidden_t[step + 1] = hidden_t
+
+				# Choose next action
+				
+
+				# Choose next comm
+				
+
+				# Choose next action and comm for target network
+
+
+			# episode[step] = self.create_step_record(s_t=game.get_state())
 
 
 	def train(self, *agents):
-		# run episodes
+		for e in range(opt.nepisodes):
+			# run episode
 
-		# backward pass through each agent to learn from experience
-		pass
+			# backprop Q values
+
+			# backprop message gradients
+
+			# update parameters
+
+			pass

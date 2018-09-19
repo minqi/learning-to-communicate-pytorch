@@ -125,11 +125,11 @@ class SwitchGame:
 		return reward, terminal
 
 	def get_state(self):
-		state = torch.zeros(self.opt.game_nagents, self.opt.bs)
+		state = torch.zeros(self.opt.bs, self.opt.game_nagents)
 
 		# Get the state of the game
-		for a in xrange(self.opt.game_nagents):
-			for b in xrange(self.opt.bs):
+		for b in xrange(self.opt.bs):
+			for a in xrange(self.opt.game_nagents):
 				if self.active_agent[b][self.step_counter] == agent:
 					state[a][b] = self.game_states.INSIDE
 

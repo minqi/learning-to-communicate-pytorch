@@ -7,22 +7,25 @@ import torch
 from utils.dotdic import DotDic
 
 class DQRNNAgent:
-	def __init__(self, opt, model, index):
-		self.unroll_length = opt.nsteps + 1
-		self.unroll_model()
+	def __init__(self, opt, game, model, index):
+		self.game = game
+		self.model = model
+		self.eps = opt.eps
+		# self.unroll_length = opt.nsteps + 1
+		# self.unroll_model()
 
-		self.id = torch.Tensor(opt.bs).fill_(index)
+		self.id = index
 
-		self.input = []
-		self.input_target = []
-		self.state = []
-		self.state_target = []
-		self.state.append(torch.zeros(
-			opt.bs, opt.model_rnn_states, opt.model_rnn_size))
-		self.state_target.append(torch.zeros(
-			opt.bs, opt.model_rnn_states, opt.model_rnn_size))
-		self.q_next_max = []
-		self.q_comm_next_max = []
+		self.hidden_t = []
+		self.hidden_target_t = []
+		self.hidden_t.append(torch.zeros(opt.bs, opt.model_rnn_size))
+		self.hidden_target_t.append(torch.zeros(opt.bs, opt.model_rnn_size))
+		# self.state.append(torch.zeros(
+		# 	opt.bs, opt.model_rnn_states, opt.model_rnn_size))
+		# self.state_target.append(torch.zeros(
+		# 	opt.bs, opt.model_rnn_states, opt.model_rnn_size))
+		# self.q_next_max = torch.zeros(opt.bs, opt.episode_steps)
+		# self.q_comm_next_max = torch.zeros(opt.bs, opt.episode_steps)
 
 	def unroll_model(self, model):
 		self.model_t = []
@@ -31,3 +34,23 @@ class DQRNNAgent:
 		for i in range(self.unroll_length):
 			self.model_t.append(model)
 			self.mode_target_t.append(model_target)
+
+	def select_action(self, q, action_range, eps=0):
+		# eps-Greedy action selector:
+		# Select max action with probability 1 - eps,
+		# and random action with probability eps
+		torch.random().item < eps:
+			torch.randint(*action_range, )
+
+		_, max_a = torch.max(q, 1)
+		return max_a
+
+	def select_comm(self):
+		# eps-Greedy message selector for RIAL agent:
+		# Select max 
+		pass
+
+	def forward(t, *inputs):
+		hidden, q = self.model_t[t].forward(*inputs)
+		return hidden, q
+
