@@ -1,6 +1,6 @@
 from utils.dotdic import DotDic
 from arena import Arena
-from dqagent import DQAgent
+from agent import DQRNNAgent
 from switch.switch_game import SwitchGame
 from switch.switch_cnet import SwitchCNet
 
@@ -77,9 +77,11 @@ def main(opt):
 
 	# Create agents
 	agents = []
+	cnet = create_cnet(opt)
 	for a in range(opt.game_nagents):
-		cnet = create_cnet(opt)
-		agents.append(DQAgent(opt, model=cnet, index=a))
+		agents.append(DQRNNAgent(opt, model=cnet, index=a))
+		if not opt.model_know_share:
+			cnet = create_cnet(opt)
 
 	# Create arena
 	arena = Arena(opt, game)

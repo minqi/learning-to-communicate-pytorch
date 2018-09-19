@@ -1,8 +1,9 @@
 import numpy as np
 import torch
-from utils.dotdic import DotDic
 
+from utils.dotdic import DotDic
 from modules.dru import DRU
+
 
 class Arena:
 	def __init__(self, opt, game):
@@ -31,6 +32,12 @@ class Arena:
 		record = DotDic({})
 		record.state_t = state_t
 		record.terminal = torch.zeros(opt.bs)
+
+		record.a_t = torch.zeros(opt.bs, opt.game_nagents)
+		if opt.model_dial:
+			record.a_comm_t = torch.zeros(opt.bs, opt.game_nagents)
+
+		# Initialize comm channel
 		if opt.game_comm_bits > 0 and opt.game_nagents > 1:
 			record.comm = torch.zeros(opt.bs, opt.game_nagents, opt.game_comm_bits)
 			if opt.model_dial and opt.model_target
@@ -51,14 +58,9 @@ class Arena:
 		episode[step] = self.create_step_record(s_t=game.get_state()) 
 		while step < num_steps and episode.ended.sum() < opt.bs:
 
-			# Forward pass
-			episode[step].a_t = torch.zeros(opt.bs, opt.game_nagents)
-			if opt.model_dial:
-				episode[step].a_comm_t = torch.zeros(opt.bs, opt.game_nagents)
-
 			# Iterate agents
 			for i in opt.game_nagents:
-				agents[i].
+				pass
 
 			step += 1
 			episode[step] = self.create_step_record(s_t=game.get_state())
