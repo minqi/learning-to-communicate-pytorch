@@ -90,13 +90,8 @@ def main(opt):
 	# Initialize action and comm bit settings
 	opt = init_opt(opt)
 
-	# Create game
 	game = create_game(opt)
-
-	# Create agents
 	agents = create_agents(opt, game)
-
-	# Create arena
 	arena = Arena(opt, game)
 
 	# Iterate episodes

@@ -1,3 +1,5 @@
+import copy
+
 import numpy as np
 import torch
 
@@ -54,7 +56,7 @@ class Arena:
 
 		# Track Q(m_t) and Q(m_max_t) per agent
 		if not opt.model_dial:
-			record.q_comm = torch.zeros(opt.bs, opt.game_nagents)
+			record.q_comm_t = torch.zeros(opt.bs, opt.game_nagents)
 			record.q_comm_max_t = torch.zeros(opt.bs, opt.game_nagents)
 
 		return record
@@ -105,17 +107,16 @@ class Arena:
 
 				# @todo: turn into a dictionary
 
-				agent_inputs = [
-					s_t[:, agent_idx],
-					comm,
-					# agent.hidden_t[step],
-					episode.step_records[step].hidden[:, agent_idx], # Hidden state
-					prev_action,
-					batch_agent_index
-				]
+				agent_inputs = {
+					's_t': s_t[:, agent_idx],
+					'messages': comm,
+					'hidden': episode.step_records[step].hidden[:, agent_idx], # Hidden state
+					'prev_action': prev_action,
+					'agent_index': batch_agent_index
+				}
 
 				# Compute model output (Q function + message bits)
-				hidden_t, q_t = agent.model(*agent_inputs)
+				hidden_t, q_t = agent.model(**agent_inputs)
 				episode.step_records[step + 1].hidden[:, agent_idx] = hidden_t.squeeze()
 
 				# Choose next action and comm using eps-greedy selector
@@ -128,7 +129,7 @@ class Arena:
 				episode.step_records[step + 1].comm[:, agent_idx] = comm_vector
 				if not opt.model_dial:
 					episode.step_records[step].a_comm_t[:, agent_idx] = comm_action
-					episode.step_records[step].q_comm_max_t[:, agent_idx] = comm_value
+					episode.step_records[step].q_comm_t[:, agent_idx] = comm_value
 
 			# Update game to next step
 			a_t = episode.step_records[step].a_t
@@ -144,14 +145,39 @@ class Arena:
 
 					if episode.step_records[step].terminal[b]:
 						episode.ended[b] = 1
+			
+			# Target-network forward pass
+			if opt.model_target and opt.train_mode:
+				for i in range(1, opt.game_nagents):
+					agent_target = agents[i]
+					agent_idx = i - 1
 
-			# Choose next action and comm for target network
-			# agent_target_inputs = []
-			# hidden_target_t, q_target_t = agent.model_target(*agent_target_inputs)
+					comm_target = agent_inputs.get('messages', None)
 
-			# Choose next comm for target network
+					if opt.comm_enabled and opt.model_dial:
+						comm_target = episode.step_records[step].comm_target.clone()
+						comm_limited = self.game.get_comm_limited(step, agent_idx)
+						if comm_limited is not None:
+							comm_lim = torch.zeros(opt.bs, 1, opt.game_comm_bits)
+							for b in range(opt.bs):
+								comm_lim[b] = comm_target[b][comm_limited[b] - 1]
+							comm_target = comm_lim
+						else:
+							comm_target[:, agent_idx].zero_()
 
-			# save q_a_t, q_a_max_t
+					agent_target_inputs = copy.copy(agent_inputs)
+					agent_target_inputs['messages'] = comm_target
+					hidden_target_t, q_target_t = agent.model_target(**agent_target_inputs)
+
+					# Choose next arg max action and comm
+					(action, action_value), (comm_vector, comm_action, comm_value) = \
+						agent.select_action_and_comm(step, q_t, eps=0)
+
+					# save target actions, comm, and q_a_t, q_a_max_t
+					episode.step_records[step].q_a_max_t[:, agent_idx] = action_value
+					episode.step_records[step + 1].comm_target[:, agent_idx] = comm_vector
+					if not opt.model_dial:
+						episode.step_records[step].q_comm_max_t[:, agent_index] = comm_value
 
 			# Update step
 			step = step + 1
@@ -160,7 +186,6 @@ class Arena:
 
 			# import pdb; pdb.set_trace()
 			print('finished step', step - 1, 'reward:', episode.r.mean().item())
-
 
 
 	def train(self, *agents):
