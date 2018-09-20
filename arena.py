@@ -70,8 +70,9 @@ class Arena:
 		episode = self.create_episode()
 		s_t = game.get_state()
 		episode.step_records.append(self.create_step_record())
-		episode.step_records[-1].s_t = s_t 
-		while step < opt.episode_steps and episode.ended.sum() < opt.bs:
+		episode.step_records[-1].s_t = s_t
+		episode_steps = train_mode and opt.nsteps + 1 or opt.nsteps
+		while step < episode_steps and episode.ended.sum() < opt.bs:
 			episode.step_records.append(self.create_step_record())
 
 			for i in range(1, opt.game_nagents + 1):
@@ -121,7 +122,7 @@ class Arena:
 
 				# Choose next action and comm using eps-greedy selector
 				(action, action_value), (comm_vector, comm_action, comm_value) = \
-					agent.select_action_and_comm(step, q_t, eps=opt.eps)
+					agent.select_action_and_comm(step, q_t, eps=opt.eps, train_mode=train_mode)
 
 				# Store action + comm
 				episode.step_records[step].a_t[:, agent_idx] = action
@@ -147,7 +148,7 @@ class Arena:
 						episode.ended[b] = 1
 			
 			# Target-network forward pass
-			if opt.model_target and opt.train_mode:
+			if opt.model_target and train_mode:
 				for i in range(1, opt.game_nagents):
 					agent_target = agents[i]
 					agent_idx = i - 1
@@ -171,7 +172,7 @@ class Arena:
 
 					# Choose next arg max action and comm
 					(action, action_value), (comm_vector, comm_action, comm_value) = \
-						agent.select_action_and_comm(step, q_t, eps=0)
+						agent.select_action_and_comm(step, q_t, eps=0, train_mode=True)
 
 					# save target actions, comm, and q_a_t, q_a_max_t
 					episode.step_records[step].q_a_max_t[:, agent_idx] = action_value
@@ -187,12 +188,16 @@ class Arena:
 			# import pdb; pdb.set_trace()
 			print('finished step', step - 1, 'reward:', episode.r.mean().item())
 
+		return episode
 
-	def train(self, *agents):
+	def train(self, agents):
+		opt = self.opt
 		for e in range(opt.nepisodes):
 			# run episode
+			episode = self.run_episode(agents, train_mode=True)
 
 			# backprop Q values
+			
 
 			# backprop message gradients
 

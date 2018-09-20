@@ -33,12 +33,10 @@ opt = DotDic({
 	'step': 100,
 	'step_test': 10,
 	'step_target': 100,
-	'train_mode': True,
 	'cuda': 0
 })
 
 def init_action_and_comm_bits(opt):
-	opt.episode_steps = opt.train_mode and opt.nsteps + 1 or opt.nsteps
 	opt.comm_enabled = opt.game_comm_bits > 0 and opt.game_nagents > 1
 
 	opt.model_comm_narrow = opt.model_dial
@@ -94,9 +92,8 @@ def main(opt):
 	agents = create_agents(opt, game)
 	arena = Arena(opt, game)
 
-	# Iterate episodes
-	for e in range(opt.nepisodes):
-		arena.run_episode(agents, train_mode=opt.train_mode)
+	arena.train(agents)
+
 
 	# Report model statistics
 

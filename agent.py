@@ -39,7 +39,7 @@ class CNetAgent:
 	def _random_choice(self, items):
 		return torch.from_numpy(np.random.choice(items, 1)).item()
 
-	def select_action_and_comm(self, step, q, eps=0):
+	def select_action_and_comm(self, step, q, eps=0, train_mode=False):
 		# eps-Greedy action selector
 		opt = self.opt
 		action_range, comm_range = self.game.get_action_range(step, self.id)
@@ -78,7 +78,7 @@ class CNetAgent:
 					comm_action[b] = comm_action[b] + 1
 					comm_vector[b, comm_action[b]] = 1
 				else:
-					comm_vector[b] = self.dru.forward(q[b, c_range], train_mode=opt.train_mode) # apply DRU
+					comm_vector[b] = self.dru.forward(q[b, c_range], train_mode=train_mode) # apply DRU
 			
 		return (action, action_value), (comm_vector, comm_action, comm_value)
 
