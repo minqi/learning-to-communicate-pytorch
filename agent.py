@@ -39,8 +39,8 @@ class DQRNNAgent:
 		# eps-Greedy action selector:
 		# Select max action with probability 1 - eps,
 		# and random action with probability eps
-		torch.random().item < eps:
-			torch.randint(*action_range, )
+		if torch.random().item < eps:
+			pass
 
 		_, max_a = torch.max(q, 1)
 		return max_a

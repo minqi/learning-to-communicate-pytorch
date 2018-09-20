@@ -37,15 +37,17 @@ class Arena:
 		# Track messages sent at time t per agent
 		if opt.comm_enabled:
 			record.comm = torch.zeros(opt.bs, opt.game_nagents, opt.game_comm_bits)
-			if opt.model_dial and opt.model_target
+			if opt.model_dial and opt.model_target:
 				record.comm_target = record.comm.clone()
 		record.d_comm = torch.zeros(opt.bs, opt.game_nagents, opt.game_comm_bits)
 
 		# Track q_t and q_t_max per agent
-		record.q_a = torch.zeros(opt.bs, opt.game_agents)
-		record.q_a_max = torch.zeros(opt.bs, opt.game_agents)
+		record.q_a = torch.zeros(opt.bs, opt.game_nagents)
+		record.q_a_max = torch.zeros(opt.bs, opt.game_nagents)
 
-	def run_episode(self, *agents, train_mode=False):
+		return record
+
+	def run_episode(self, agents, train_mode=False):
 		opt = self.opt
 		game = self.game
 		game.reset()
@@ -60,18 +62,14 @@ class Arena:
 
 			for i in range(1, opt.game_nagents + 1):
 				# Get received messages per agent per batch
-				agent_inputs = [s_t]
 				comm = None
 				if opt.comm_enabled:
 					comm = episode.step_records[step].comm.clone()
 					comm_limited = self.game.get_comm_limited(step, i)
-					if comm_limited:
+					if comm_limited is not None:
 						comm_lim = torch.zeros(opt.bs, 1, opt.game_comm_bits)
-						if not comm_limited:
-							comm_lim.zero_()
-						else:
-							for b in range(opt.bs):
-								comm_lim[b] = comm[b][comm_lim[b]]
+						for b in range(opt.bs):
+							comm_lim[b] = comm[b][comm_limited[b]]
 						comm = comm_lim
 					else:
 						comm[:, i].zero_()
@@ -79,20 +77,20 @@ class Arena:
 				# Get prev action per batch
 				prev_action = None
 				if opt.model_action_aware:
-					prev_action = torch.zeros(opt.bs)
+					prev_action = torch.zeros(opt.bs, dtype=torch.long)
 					if step > 1:
 						prev_action = episode.step_records[step - 1].a_t[:, i]
 					if not opt.model_dial:
-						prev_message = torch.zeros(opt.bs)
+						prev_message = torch.zeros(opt.bs, dtype=torch.long)
 						if step > 1:
 							prev_message = episode_step_records[step - 1].a_comm_t[:, i]
 						prev_action = (prev_action, prev_message)
 
 				# Batch agent index for input into model
-				batch_agent_index = torch.zeros(opt.bs).fill_(i)
+				batch_agent_index = torch.zeros(opt.bs, dtype=torch.long).fill_(i)
 
 				agent_inputs = [
-					s_t,
+					s_t[:, i],
 					comm,
 					agents[i].hidden_t[step], # Hidden state
 					prev_action,
@@ -100,17 +98,24 @@ class Arena:
 				]
 
 				# Compute model ouput (Q function + message bits)
-				hidden_t, q_t = agents[i].model(*inputs)
-				agents[i].hidden_t[step + 1] = hidden_t
+				hidden_t, q_t = agents[i].model(*agent_inputs)
 
-				# Choose next action
+				import pdb; pdb.set_trace()
+				# agents[i].hidden_t[step + 1] = hidden_t
 				
+				# Choose next action
+
 
 				# Choose next comm
-				
+
 
 				# Choose next action and comm for target network
 
+
+			# update game state to next step
+
+
+			# save rewards, terminal states, etc
 
 			# episode[step] = self.create_step_record(s_t=game.get_state())
 

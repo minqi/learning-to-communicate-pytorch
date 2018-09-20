@@ -233,12 +233,15 @@ class RNN(nn.Module):
 		return layer.forward_sequence(x, lengths, hidden)
 
 	def forward(self, x, lengths=None, hidden=None):
+		"""
+		Expects 3D input of dimensions batch_size x max_seq_len x feature_size
+		"""
 		batch_size, max_length, _ = x.size()
 
 		if lengths is None:
 			lengths = Variable(torch.LongTensor([max_length] * batch_size))
 		if hidden is None:
-			hidden = Variable(torch.zero(batch_size, self.hidden_size))
+			hidden = Variable(torch.zeros(batch_size, self.hidden_size))
 			if self.mode == 'lstm':
 				hidden = (hidden, hidden)
 

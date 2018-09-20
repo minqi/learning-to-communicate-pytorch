@@ -39,7 +39,7 @@ opt = DotDic({
 
 def init_action_and_comm_bits(opt):
 	opt.episode_steps = opt.train_mode and opt.nsteps + 1 or opt.nsteps
-	opt.comm_enabled = opt.game_comm_bits > 0 and opt.game_ngents > 1
+	opt.comm_enabled = opt.game_comm_bits > 0 and opt.game_nagents > 1
 
 	opt.model_comm_narrow = opt.model_dial
 	if opt.model_rnn == 'lstm':
@@ -50,7 +50,7 @@ def init_action_and_comm_bits(opt):
 	if not opt.model_comm_narrow and opt.game_comm_bits > 0:
 		opt.game_comm_bits = 2 ** opt.game_comm_bits
 
-	if opt.game_comm_bits > 0 and opt.game_nagents > 1:
+	if opt.comm_enabled:
 		opt.game_action_space_total = opt.game_action_space + opt.game_comm_bits
 	else:
 		opt.game_action_space_total = opt.game_action_space
@@ -71,11 +71,11 @@ def create_cnet(opt):
 	else:
 		raise Exception('Unknown game: {}'.format(game_name))
 
-def create_agents(opt):
+def create_agents(opt, game):
 	agents = [None] # 1-index agents
 	cnet = create_cnet(opt)
 	for i in range(1, opt.game_nagents + 1):
-		agents.append(DQRNNAgent(opt, model=cnet, index=i))
+		agents.append(DQRNNAgent(opt, game=game, model=cnet, index=i))
 		if not opt.model_know_share:
 			cnet = create_cnet(opt)
 	return agents
@@ -88,13 +88,13 @@ def main(opt):
 	game = create_game(opt)
 
 	# Create agents
-	agents = create_agents(opt)
+	agents = create_agents(opt, game)
 
 	# Create arena
 	arena = Arena(opt, game)
 
 	# Iterate episodes
-	for e in range(opt.game_nepisodes):
+	for e in range(opt.nepisodes):
 		arena.run_episode(agents, train_mode=opt.train_mode)
 
 	# Report model statistics

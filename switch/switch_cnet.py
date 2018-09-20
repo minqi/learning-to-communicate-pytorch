@@ -66,20 +66,25 @@ class SwitchCNet(nn.Module):
 		layer.bias.data.uniform_(*self.init_param_range)
 
 	def reset_params(self):
+		opt = self.opt
 		self.agent_lookup.weight.data.uniform_(*self.init_param_range)
 		self.state_lookup.weight.data.uniform_(*self.init_param_range)
-		self.prev_action_lookup.weight.data.uniform_(*self.init_param_range)
-		self.prev_message_lookup.weight.data.uniform_(*self.init_param_range)
+		if opt.model_action_aware:
+			self.prev_action_lookup.weight.data.uniform_(*self.init_param_range)
+			if not opt.model_dial:
+				self.prev_message_lookup.weight.data.uniform_(*self.init_param_range)
 		self._reset_linear_module(self.messages_mlp.linear1)
 		self.rnn.reset_params()
 		self._reset_linear_module(self.outputs.linear1)
 		self._reset_linear_module(self.outputs.linear2)
 
 	def forward(self, s_t, messages, hidden, prev_action, agent_index):
+		opt = self.opt
 		z_a, z_o, z_u, z_m = [0]*4
 		z_a = self.agent_lookup(agent_index)
-		z_o = self.state_lookup(observation)
+		z_o = self.state_lookup(s_t)
 		if opt.model_action_aware:
+			prev_message = None
 			if not opt.model_dial:
 				prev_action, prev_message = prev_action
 			z_u = self.prev_action_lookup(prev_action)
@@ -88,9 +93,10 @@ class SwitchCNet(nn.Module):
 		z_m = self.messages_mlp(messages.view(-1, self.comm_size).contiguous())
 
 		z = z_a + z_o + z_u + z_m
+		z = z.unsqueeze(1)
 
 		model_rnn_size = self.opt.model_rnn_size
-		rnn_out, _ = self.rnn(z, hidden)
+		rnn_out, _ = self.rnn(z, hidden=hidden)
 		outputs = self.outputs(rnn_out[:, -1, :])
 
 		return rnn_out, outputs

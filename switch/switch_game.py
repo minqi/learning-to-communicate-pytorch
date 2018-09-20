@@ -1,16 +1,16 @@
 """
-
 Switch game
 
 This class manages the state of the Switch game among multiple agents.
 
-Actions:
-1 = On
-2 = Off
-3 = Tell
-4 = Nothing
+RIAL Actions:
 
+1 = Nothing
+2 = Tell
+3 = On
+4 = Off
 """
+
 import numpy as np
 import torch
 
@@ -20,10 +20,8 @@ class SwitchGame:
 
 	def __init__(self, opt):
 		self.game_actions = DotDic({
-			'ON': 1,
-			'OFF': 2,
-			'TELL': 3,
-			'NOTHING': 4,
+			'NOTHING': 1,
+			'TELL': 2
 		})
 
 		self.game_states = DotDic({
@@ -37,7 +35,7 @@ class SwitchGame:
 		opt_game_default = DotDic({
 			'game_action_space': 2,
 			'game_reward_shift': 0,
-			'game_comm_bits': 0,
+			'game_comm_bits': 1,
 			'game_comm_sigma': 2
 		})
 		for k in opt_game_default:
@@ -66,37 +64,37 @@ class SwitchGame:
 
 		# Active agent
 		self.active_agent = torch.zeros(self.opt.bs, self.opt.nsteps)
-		for b in xrange(self.opt.bs):
-			for step in xrange(self.opt.nsteps):
+		for b in range(self.opt.bs):
+			for step in range(self.opt.nsteps):
 				agent_id = 1 + np.random.randint(self.opt.game_nagents)
 				self.active_agent[b][step] = agent_id
-				self.has_been[b][step][agent_id] = True
+				self.has_been[b][step][agent_id - 1] = 1
 
 		return self
 
 	def get_action_range(self, step, agent):
-		action_range = np.zeros((self.opt.bs, 2))
+		action_range = torch.zeros(self.opt.bs, 2)
 		if self.opt.model_dial:
 			bound = self.opt.game_action_space
-			for b in xrange(self.opt.bs):
+			for b in range(self.opt.bs):
 				if self.active_agent[b][step] == agent:
-					action_range[b] = np.array([1, self.opt.game_action_space])
+					action_range[b] = torch.tensor([1, self.opt.game_action_space], dtype=torch.long)
 
 			return action_range
 		else:
-			comm_range = np.zeros((self.opt.bs, 2))
-			for b in xrange(self.opt.bs):
+			comm_range = torch.zeros((self.opt.bs, 2))
+			for b in range(self.opt.bs):
 				if self.active_agent[b][step] == agent:
-					action_range[b] = np.array([1, self.opt.game_action_space])
-					comm_range[b] = np.array(
-						[self.opt.game_action_space, self.opt.game_action_space_total])
+					action_range[b] = torch.tensor([1, self.opt.game_action_space], dtype=torch.long)
+					comm_range[b] = torch.tensor(
+						[self.opt.game_action_space, self.opt.game_action_space_total], dtype=torch.long)
 
 			return action_range, comm_range
 
 	def get_comm_limited(self, step, i):
 		if self.opt.game_comm_limited:
-			comm_lim = np.zeros(self.opt.bs)
-			for b in xrange(self.opt.bs):
+			comm_lim = torch.zeros(self.opt.bs, dtype=torch.long)
+			for b in range(self.opt.bs):
 				if step > 0 and i == self.active_agent[b][step]:
 					comm_lim[b] = self.active_agent[b][step - 1]
 			return comm_lim
@@ -104,33 +102,33 @@ class SwitchGame:
 
 	def get_reward(self, a_t):
 		# Return reward for action a_t by active agent
-		for b in xrange(self.opt.bs):
-			active_agent = self.active_agent[b][self.step_counter]
+		for b in range(self.opt.bs):
+			active_agent = self.active_agent[b][self.step_count] - 1
 			if a_t[b][active_agent] == self.game_actions.TELL and not self.terminal[b]:
-				has_been = self.has_been[b][:self.step_counter].sum(0).gt(0).sum().item()
+				has_been = self.has_been[b][:self.step_count].sum(0).gt(0).sum().item()
 				if has_been == self.opt.game_nagents:
 					self.reward[b] = self.reward_all_live
 				else:
 					self.reward[b] = self.reward_all_die
-				self.terminal[b] = True
-			elif self.step_counter == self.opt.nsteps and not self.terminal[b]:
-				self.terminal[b] = True
+				self.terminal[b] = 1
+			elif self.step_count == self.opt.nsteps and not self.terminal[b]:
+				self.terminal[b] = 1
 
 		return self.reward.clone(), self.terminal.clone()
 
 	def step(self, a_t):
 		reward, terminal = self.get_reward(a_t)
-		self.step_counter += 1
+		self.step_count += 1
 
 		return reward, terminal
 
 	def get_state(self):
-		state = torch.zeros(self.opt.bs, self.opt.game_nagents)
+		state = torch.zeros(self.opt.bs, self.opt.game_nagents, dtype=torch.long)
 
 		# Get the state of the game
-		for b in xrange(self.opt.bs):
-			for a in xrange(self.opt.game_nagents):
-				if self.active_agent[b][self.step_counter] == agent:
-					state[a][b] = self.game_states.INSIDE
+		for b in range(self.opt.bs):
+			for a in range(1, self.opt.game_nagents + 1):
+				if self.active_agent[b][self.step_count] == a:
+					state[b][a - 1] = self.game_states.INSIDE
 
 		return state
