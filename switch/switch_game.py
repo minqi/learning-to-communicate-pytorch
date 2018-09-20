@@ -60,10 +60,10 @@ class SwitchGame:
 		self.has_been = torch.zeros(self.opt.bs, self.opt.nsteps, self.opt.game_nagents)
 
 		# Terminal state
-		self.terminal = torch.zeros(self.opt.bs)
+		self.terminal = torch.zeros(self.opt.bs, dtype=torch.long)
 
 		# Active agent
-		self.active_agent = torch.zeros(self.opt.bs, self.opt.nsteps)
+		self.active_agent = torch.zeros(self.opt.bs, self.opt.nsteps, dtype=torch.long)
 		for b in range(self.opt.bs):
 			for step in range(self.opt.nsteps):
 				agent_id = 1 + np.random.randint(self.opt.game_nagents)
@@ -73,23 +73,15 @@ class SwitchGame:
 		return self
 
 	def get_action_range(self, step, agent):
-		action_range = torch.zeros(self.opt.bs, 2)
-		if self.opt.model_dial:
-			bound = self.opt.game_action_space
-			for b in range(self.opt.bs):
-				if self.active_agent[b][step] == agent:
-					action_range[b] = torch.tensor([1, self.opt.game_action_space], dtype=torch.long)
+		action_range = torch.zeros(self.opt.bs, 2, dtype=torch.long)
+		comm_range = torch.zeros((self.opt.bs, 2), dtype=torch.long)
+		for b in range(self.opt.bs):
+			if self.active_agent[b][step] == agent:
+				action_range[b] = torch.tensor([1, self.opt.game_action_space], dtype=torch.long)
+				comm_range[b] = torch.tensor(
+					[self.opt.game_action_space, self.opt.game_action_space_total], dtype=torch.long)
 
-			return action_range
-		else:
-			comm_range = torch.zeros((self.opt.bs, 2))
-			for b in range(self.opt.bs):
-				if self.active_agent[b][step] == agent:
-					action_range[b] = torch.tensor([1, self.opt.game_action_space], dtype=torch.long)
-					comm_range[b] = torch.tensor(
-						[self.opt.game_action_space, self.opt.game_action_space_total], dtype=torch.long)
-
-			return action_range, comm_range
+		return action_range, comm_range
 
 	def get_comm_limited(self, step, i):
 		if self.opt.game_comm_limited:
@@ -103,15 +95,15 @@ class SwitchGame:
 	def get_reward(self, a_t):
 		# Return reward for action a_t by active agent
 		for b in range(self.opt.bs):
-			active_agent = self.active_agent[b][self.step_count] - 1
-			if a_t[b][active_agent] == self.game_actions.TELL and not self.terminal[b]:
+			active_agent_idx = self.active_agent[b][self.step_count].item() - 1
+			if a_t[b][active_agent_idx].item() == self.game_actions.TELL and not self.terminal[b].item():
 				has_been = self.has_been[b][:self.step_count].sum(0).gt(0).sum().item()
 				if has_been == self.opt.game_nagents:
 					self.reward[b] = self.reward_all_live
 				else:
 					self.reward[b] = self.reward_all_die
 				self.terminal[b] = 1
-			elif self.step_count == self.opt.nsteps and not self.terminal[b]:
+			elif self.step_count == self.opt.nsteps - 1 and not self.terminal[b]:
 				self.terminal[b] = 1
 
 		return self.reward.clone(), self.terminal.clone()

@@ -1,6 +1,6 @@
 from utils.dotdic import DotDic
 from arena import Arena
-from agent import DQRNNAgent
+from agent import CNetAgent
 from switch.switch_game import SwitchGame
 from switch.switch_cnet import SwitchCNet
 
@@ -29,7 +29,7 @@ opt = DotDic({
 	'bs': 32,
 	'learningrate': 5e-4,
 	'eps': 0.05,
-	'nepisodes': 5000,
+	'nepisodes': 3,
 	'step': 100,
 	'step_test': 10,
 	'step_target': 100,
@@ -57,6 +57,12 @@ def init_action_and_comm_bits(opt):
 
 	return opt
 
+def init_opt(opt):
+	if not opt.model_rnn_layers:
+		opt.model_rnn_layers = 2
+	opt = init_action_and_comm_bits(opt)
+	return opt
+
 def create_game(opt):
 	game_name = opt.game.lower()
 	if game_name == 'switch':
@@ -75,14 +81,14 @@ def create_agents(opt, game):
 	agents = [None] # 1-index agents
 	cnet = create_cnet(opt)
 	for i in range(1, opt.game_nagents + 1):
-		agents.append(DQRNNAgent(opt, game=game, model=cnet, index=i))
+		agents.append(CNetAgent(opt, game=game, model=cnet, index=i))
 		if not opt.model_know_share:
 			cnet = create_cnet(opt)
 	return agents
 
 def main(opt):
 	# Initialize action and comm bit settings
-	opt = init_action_and_comm_bits(opt)
+	opt = init_opt(opt)
 
 	# Create game
 	game = create_game(opt)

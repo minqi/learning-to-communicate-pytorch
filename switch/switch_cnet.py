@@ -49,7 +49,7 @@ class SwitchCNet(nn.Module):
 		dropout_rate = opt.model_rnn_dropout_rate or 0
 		self.rnn = RNN(
 			mode=rnn_mode, input_size=opt.model_rnn_size, hidden_size=opt.model_rnn_size, 
-			num_layers=2, use_bn=True, bn_max_t=16, dropout_rate=dropout_rate)
+			num_layers=opt.model_rnn_layers, use_bn=True, bn_max_t=16, dropout_rate=dropout_rate)
 
 		# Set up outputs
 		self.outputs = nn.Sequential()

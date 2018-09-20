@@ -26,24 +26,36 @@ class Arena:
 	def create_step_record(self):
 		opt = self.opt
 		record = DotDic({})
-		record.state_t = 0 
+		record.s_t = None
+		record.r_t = torch.zeros(opt.bs, opt.game_nagents)
 		record.terminal = torch.zeros(opt.bs)
 
 		# Track actions at time t per agent
-		record.a_t = torch.zeros(opt.bs, opt.game_nagents)
+		record.a_t = torch.zeros(opt.bs, opt.game_nagents, dtype=torch.long)
 		if not opt.model_dial:
-			record.a_comm_t = torch.zeros(opt.bs, opt.game_nagents)
+			record.a_comm_t = torch.zeros(opt.bs, opt.game_nagents, dtype=torch.long)
 
 		# Track messages sent at time t per agent
 		if opt.comm_enabled:
-			record.comm = torch.zeros(opt.bs, opt.game_nagents, opt.game_comm_bits)
+			comm_dtype = opt.model_dial and torch.float or torch.long
+			record.comm = torch.zeros(opt.bs, opt.game_nagents, opt.game_comm_bits, dtype=comm_dtype)
 			if opt.model_dial and opt.model_target:
 				record.comm_target = record.comm.clone()
+				
 		record.d_comm = torch.zeros(opt.bs, opt.game_nagents, opt.game_comm_bits)
 
-		# Track q_t and q_t_max per agent
-		record.q_a = torch.zeros(opt.bs, opt.game_nagents)
-		record.q_a_max = torch.zeros(opt.bs, opt.game_nagents)
+		# Track hidden state per time t per agent
+		record.hidden = torch.zeros(opt.bs, opt.game_nagents, opt.model_rnn_size)
+		record.hidden_target = torch.zeros(opt.bs, opt.game_nagents, opt.model_rnn_size)
+
+		# Track Q(a_t) and Q(a_max_t) per agent
+		record.q_a_t = torch.zeros(opt.bs, opt.game_nagents)
+		record.q_a_max_t = torch.zeros(opt.bs, opt.game_nagents)
+
+		# Track Q(m_t) and Q(m_max_t) per agent
+		if not opt.model_dial:
+			record.q_comm = torch.zeros(opt.bs, opt.game_nagents)
+			record.q_comm_max_t = torch.zeros(opt.bs, opt.game_nagents)
 
 		return record
 
@@ -62,62 +74,92 @@ class Arena:
 
 			for i in range(1, opt.game_nagents + 1):
 				# Get received messages per agent per batch
+				agent = agents[i]
+				agent_idx = i - 1
 				comm = None
 				if opt.comm_enabled:
 					comm = episode.step_records[step].comm.clone()
-					comm_limited = self.game.get_comm_limited(step, i)
+					comm_limited = self.game.get_comm_limited(step, agent_idx)
 					if comm_limited is not None:
 						comm_lim = torch.zeros(opt.bs, 1, opt.game_comm_bits)
 						for b in range(opt.bs):
-							comm_lim[b] = comm[b][comm_limited[b]]
+							comm_lim[b] = comm[b][comm_limited[b] - 1]
 						comm = comm_lim
 					else:
-						comm[:, i].zero_()
+						comm[:, agent_idx].zero_()
 
 				# Get prev action per batch
 				prev_action = None
 				if opt.model_action_aware:
 					prev_action = torch.zeros(opt.bs, dtype=torch.long)
 					if step > 1:
-						prev_action = episode.step_records[step - 1].a_t[:, i]
+						prev_action = episode.step_records[step - 1].a_t[:, agent_idx]
 					if not opt.model_dial:
 						prev_message = torch.zeros(opt.bs, dtype=torch.long)
 						if step > 1:
-							prev_message = episode_step_records[step - 1].a_comm_t[:, i]
+							prev_message = episode_step_records[step - 1].a_comm_t[:, agent_idx]
 						prev_action = (prev_action, prev_message)
 
 				# Batch agent index for input into model
-				batch_agent_index = torch.zeros(opt.bs, dtype=torch.long).fill_(i)
+				batch_agent_index = torch.zeros(opt.bs, dtype=torch.long).fill_(agent_idx)
+
+				# @todo: turn into a dictionary
 
 				agent_inputs = [
-					s_t[:, i],
+					s_t[:, agent_idx],
 					comm,
-					agents[i].hidden_t[step], # Hidden state
+					# agent.hidden_t[step],
+					episode.step_records[step].hidden[:, agent_idx], # Hidden state
 					prev_action,
 					batch_agent_index
 				]
 
-				# Compute model ouput (Q function + message bits)
-				hidden_t, q_t = agents[i].model(*agent_inputs)
+				# Compute model output (Q function + message bits)
+				hidden_t, q_t = agent.model(*agent_inputs)
+				episode.step_records[step + 1].hidden[:, agent_idx] = hidden_t.squeeze()
 
-				import pdb; pdb.set_trace()
-				# agents[i].hidden_t[step + 1] = hidden_t
-				
-				# Choose next action
+				# Choose next action and comm using eps-greedy selector
+				(action, action_value), (comm_vector, comm_action, comm_value) = \
+					agent.select_action_and_comm(step, q_t, eps=opt.eps)
 
+				# Store action + comm
+				episode.step_records[step].a_t[:, agent_idx] = action
+				episode.step_records[step].q_a_t[:, agent_idx] = action_value
+				episode.step_records[step + 1].comm[:, agent_idx] = comm_vector
+				if not opt.model_dial:
+					episode.step_records[step].a_comm_t[:, agent_idx] = comm_action
+					episode.step_records[step].q_comm_max_t[:, agent_idx] = comm_value
 
-				# Choose next comm
+			# Update game to next step
+			a_t = episode.step_records[step].a_t
+			episode.step_records[step].r_t, episode.step_records[step].terminal = \
+				self.game.step(a_t)
 
+			# Accumulate steps
+			if step < opt.nsteps:
+				for b in range(opt.bs):
+					if not episode.ended[b]:
+						episode.steps[b] = episode.steps[b] + 1
+						episode.r[b] = episode.r[b] + episode.step_records[step].r_t[b]
 
-				# Choose next action and comm for target network
+					if episode.step_records[step].terminal[b]:
+						episode.ended[b] = 1
 
+			# Choose next action and comm for target network
+			# agent_target_inputs = []
+			# hidden_target_t, q_target_t = agent.model_target(*agent_target_inputs)
 
-			# update game state to next step
+			# Choose next comm for target network
 
+			# save q_a_t, q_a_max_t
 
-			# save rewards, terminal states, etc
+			# Update step
+			step = step + 1
+			if episode.ended.sum().item() < opt.bs:
+				episode.step_records[step].s_t = self.game.get_state()
 
-			# episode[step] = self.create_step_record(s_t=game.get_state())
+			print('finished step', step)
+
 
 
 	def train(self, *agents):
