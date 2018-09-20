@@ -57,7 +57,7 @@ class CNetAgent:
 		# Get action
 		for b in range(opt.bs):
 			if action_range[b, 1].item() > 0:
-				a_range = range(action_range[b, 0].item()-1, action_range[b, 1].item()-1)
+				a_range = range(action_range[b, 0].item()-1, action_range[b, 1].item())
 				if should_select_random[b]:
 					# Select random action
 					action[b] = self._random_choice(a_range)
@@ -67,7 +67,7 @@ class CNetAgent:
 				action[b] = action[b] + 1
 
 			if comm_range[b, 1].item() > comm_range[b, 0].item():
-				c_range = range(comm_range[b, 0].item()-1, comm_range[b, 1].item()-1)
+				c_range = range(comm_range[b, 0].item(), comm_range[b, 1].item())
 				if not opt.model_dial and comm_range[b, 1].item() > 0:
 					if should_select_random[b]:
 						# Select random comm

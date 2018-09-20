@@ -158,7 +158,8 @@ class Arena:
 			if episode.ended.sum().item() < opt.bs:
 				episode.step_records[step].s_t = self.game.get_state()
 
-			print('finished step', step)
+			# import pdb; pdb.set_trace()
+			print('finished step', step - 1, 'reward:', episode.r.mean().item())
 
 
 
