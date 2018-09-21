@@ -126,8 +126,8 @@ class CNetAgent:
 
 		self.episodes_seen = self.episodes_seen + 1
 		if self.episodes_seen % self.opt.step_target == 0:
-			self.model_target = copy.deepcopy(self.model)
-			# self.model_target.load_state_dict(self.model.state_dict())
+			# self.model_target = copy.deepcopy(self.model)
+			self.model_target.load_state_dict(self.model.state_dict())
 
 		# print('episode:', self.episodes_seen, 'loss', loss)
 

@@ -82,7 +82,7 @@ class Arena:
 				comm = None
 				if opt.comm_enabled:
 					comm = episode.step_records[step].comm.clone()
-					comm_limited = self.game.get_comm_limited(step, agent_idx)
+					comm_limited = self.game.get_comm_limited(step, agent.id)
 					if comm_limited is not None:
 						comm_lim = torch.zeros(opt.bs, 1, opt.game_comm_bits)
 						for b in range(opt.bs):
@@ -155,7 +155,7 @@ class Arena:
 
 					if opt.comm_enabled and opt.model_dial:
 						comm_target = episode.step_records[step].comm_target.clone()
-						comm_limited = self.game.get_comm_limited(step, agent_idx)
+						comm_limited = self.game.get_comm_limited(step, agent_target.id)
 						if comm_limited is not None:
 							comm_lim = torch.zeros(opt.bs, 1, opt.game_comm_bits)
 							for b in range(opt.bs):
@@ -190,14 +190,25 @@ class Arena:
 			# import pdb; pdb.set_trace()
 			# print('finished step', step - 1, 'reward:', episode.r.mean().item())
 
+		# Collect stats
+		episode.game_stats = self.game.get_stats(episode.steps)
+
 		return episode
 
-	def average_reward(self, episode):
+	def average_reward(self, episode, normalized=True):
 		print(episode.r[:10])
 		print(episode.steps[:10])
 		print(episode.step_records[-2].comm[0, :])
+			
+		reward = episode.r.sum()/(self.opt.bs * self.opt.game_nagents)
+		if normalized:
+			god_reward = episode.game_stats.god_reward.sum()/self.opt.bs
+			if reward == god_reward:
+				reward = 1
+			else:
+				reward = reward/god_reward
 
-		return episode.r.sum()/(self.opt.bs * self.opt.game_nagents)
+		return reward
 
 	def train(self, agents, reset=True):
 		opt = self.opt

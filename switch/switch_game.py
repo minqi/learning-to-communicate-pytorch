@@ -63,7 +63,7 @@ class SwitchGame:
 		self.terminal = torch.zeros(self.opt.bs, dtype=torch.long)
 
 		# Active agent
-		self.active_agent = torch.zeros(self.opt.bs, self.opt.nsteps, dtype=torch.long)
+		self.active_agent = torch.zeros(self.opt.bs, self.opt.nsteps, dtype=torch.long) # 1-indexed agents
 		for b in range(self.opt.bs):
 			for step in range(self.opt.nsteps):
 				agent_id = 1 + np.random.randint(self.opt.game_nagents)
@@ -72,22 +72,22 @@ class SwitchGame:
 
 		return self
 
-	def get_action_range(self, step, agent):
+	def get_action_range(self, step, agent_id):
 		action_range = torch.zeros(self.opt.bs, 2, dtype=torch.long)
 		comm_range = torch.zeros((self.opt.bs, 2), dtype=torch.long)
 		for b in range(self.opt.bs):
-			if self.active_agent[b][step] == agent:
+			if self.active_agent[b][step] == agent_id:
 				action_range[b] = torch.tensor([1, self.opt.game_action_space], dtype=torch.long)
 				comm_range[b] = torch.tensor(
 					[self.opt.game_action_space, self.opt.game_action_space_total], dtype=torch.long)
 
 		return action_range, comm_range
 
-	def get_comm_limited(self, step, i):
+	def get_comm_limited(self, step, agent_id):
 		if self.opt.game_comm_limited:
 			comm_lim = torch.zeros(self.opt.bs, dtype=torch.long)
 			for b in range(self.opt.bs):
-				if step > 0 and i == self.active_agent[b][step]:
+				if step > 0 and agent_id == self.active_agent[b][step]:
 					comm_lim[b] = self.active_agent[b][step - 1]
 			return comm_lim
 		return None
@@ -97,7 +97,7 @@ class SwitchGame:
 		for b in range(self.opt.bs):
 			active_agent_idx = self.active_agent[b][self.step_count].item() - 1
 			if a_t[b][active_agent_idx].item() == self.game_actions.TELL and not self.terminal[b].item():
-				has_been = self.has_been[b][:self.step_count].sum(0).gt(0).sum().item()
+				has_been = self.has_been[b][:self.step_count + 1].sum(0).gt(0).sum().item()
 				if has_been == self.opt.game_nagents:
 					self.reward[b] = self.reward_all_live
 				else:
@@ -124,3 +124,23 @@ class SwitchGame:
 					state[b][a - 1] = self.game_states.INSIDE
 
 		return state
+
+	def god_strategy_reward(self, steps):
+		reward = torch.zeros(self.opt.bs)
+		for b in range(self.opt.bs):
+			# import pdb; pdb.set_trace()
+			has_been = self.has_been[b][:steps[b]].sum(0).gt(0).sum().item()
+			if has_been == self.opt.game_nagents:
+				reward[b] = 1
+
+		return reward
+
+	def naive_strategy_reward(self):
+		pass
+
+	def get_stats(self, steps):
+		stats = DotDic({})
+		stats.god_reward = self.god_strategy_reward(steps)
+		return stats
+
+

@@ -28,7 +28,7 @@ opt = DotDic({
 	'model_rnn_dropout_rate': 0,
 	'bs': 32,
 	'learningrate': 1e-5,
-	'momentum': 0.05,
+	'momentum': 0.95,
 	'eps': 0.05,
 	'nepisodes': 5000,
 	'step': 100,
@@ -94,7 +94,6 @@ def main(opt):
 	arena = Arena(opt, game)
 
 	arena.train(agents)
-
 
 	# Report model statistics
 

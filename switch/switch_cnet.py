@@ -86,7 +86,7 @@ class SwitchCNet(nn.Module):
 		hidden = Variable(hidden)
 		prev_action = Variable(prev_action)
 		agent_index = Variable(agent_index)
-		# messages = Variable(messages, requires_grad=True)
+		messages = Variable(messages, requires_grad=True)
 
 		opt = self.opt
 		z_a, z_o, z_u, z_m = [0]*4
