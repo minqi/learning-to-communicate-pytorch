@@ -190,17 +190,16 @@ class Arena:
 
 		return episode
 
-	def train(self, agents):
+	def _compute_episode_loss(episode):
+		pass
+
+	def train(self, agents, reset=True):
 		opt = self.opt
+		if reset:
+			for agent in agents[1:]:
+				agent.reset()
 		for e in range(opt.nepisodes):
 			# run episode
 			episode = self.run_episode(agents, train_mode=True)
-
-			# backprop Q values
-			
-
-			# backprop message gradients
-
-			# update parameters
-
-			pass
+			for agent in agents[1:]:
+				agent.learn_from_episode(episode)
