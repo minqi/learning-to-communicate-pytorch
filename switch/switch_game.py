@@ -45,7 +45,7 @@ class SwitchGame:
 		self.opt.nsteps = 4 * self.opt.game_nagents - 6
 
 		self.reward_all_live = 1
-		self.reward_all_die = -1 
+		self.reward_all_die = -1
 
 		self.reset()
 

@@ -15,8 +15,8 @@ class Arena:
 	def create_episode(self):
 		opt = self.opt
 		episode = DotDic({})
-		episode.steps = torch.zeros(opt.bs)
-		episode.ended = torch.zeros(opt.bs)
+		episode.steps = torch.zeros(opt.bs).int()
+		episode.ended = torch.zeros(opt.bs).int()
 		episode.r = torch.zeros(opt.bs, opt.game_nagents)
 		episode.comm_per = torch.zeros(opt.bs)
 		episode.comm_count = 0
@@ -106,8 +106,6 @@ class Arena:
 				# Batch agent index for input into model
 				batch_agent_index = torch.zeros(opt.bs, dtype=torch.long).fill_(agent_idx)
 
-				# @todo: turn into a dictionary
-
 				agent_inputs = {
 					's_t': s_t[:, agent_idx],
 					'messages': comm,
@@ -168,7 +166,11 @@ class Arena:
 
 					agent_target_inputs = copy.copy(agent_inputs)
 					agent_target_inputs['messages'] = comm_target
+					agent_target_inputs['hidden'] = \
+						episode.step_records[step].hidden_target[:, agent_idx]
 					hidden_target_t, q_target_t = agent.model_target(**agent_target_inputs)
+					episode.step_records[step + 1].hidden_target[:, agent_idx] = \
+						hidden_target_t.squeeze()
 
 					# Choose next arg max action and comm
 					(action, action_value), (comm_vector, comm_action, comm_value) = \
@@ -186,12 +188,16 @@ class Arena:
 				episode.step_records[step].s_t = self.game.get_state()
 
 			# import pdb; pdb.set_trace()
-			print('finished step', step - 1, 'reward:', episode.r.mean().item())
+			# print('finished step', step - 1, 'reward:', episode.r.mean().item())
 
 		return episode
 
-	def _compute_episode_loss(episode):
-		pass
+	def average_reward(self, episode):
+		print(episode.r[:10])
+		print(episode.steps[:10])
+		print(episode.step_records[-2].comm[0, :])
+
+		return episode.r.sum()/(self.opt.bs * self.opt.game_nagents)
 
 	def train(self, agents, reset=True):
 		opt = self.opt
@@ -201,5 +207,7 @@ class Arena:
 		for e in range(opt.nepisodes):
 			# run episode
 			episode = self.run_episode(agents, train_mode=True)
+			print('episode', e, 'avg reward', self.average_reward(episode))
 			for agent in agents[1:]:
 				agent.learn_from_episode(episode)
+

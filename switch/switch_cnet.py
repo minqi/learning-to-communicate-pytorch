@@ -49,7 +49,7 @@ class SwitchCNet(nn.Module):
 		dropout_rate = opt.model_rnn_dropout_rate or 0
 		self.rnn = RNN(
 			mode=rnn_mode, input_size=opt.model_rnn_size, hidden_size=opt.model_rnn_size, 
-			num_layers=opt.model_rnn_layers, use_bn=True, bn_max_t=16, dropout_rate=dropout_rate)
+			num_layers=opt.model_rnn_layers, use_bn=opt.model_bn, bn_max_t=6, dropout_rate=dropout_rate)
 
 		# Set up outputs
 		self.outputs = nn.Sequential()
@@ -78,7 +78,16 @@ class SwitchCNet(nn.Module):
 		self._reset_linear_module(self.outputs.linear1)
 		self._reset_linear_module(self.outputs.linear2)
 
+	def get_params(self):
+		return list(self.parameters())
+
 	def forward(self, s_t, messages, hidden, prev_action, agent_index):
+		s_t = Variable(s_t)
+		hidden = Variable(hidden)
+		prev_action = Variable(prev_action)
+		agent_index = Variable(agent_index)
+		# messages = Variable(messages, requires_grad=True)
+
 		opt = self.opt
 		z_a, z_o, z_u, z_m = [0]*4
 		z_a = self.agent_lookup(agent_index)

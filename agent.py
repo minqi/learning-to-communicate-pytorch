@@ -20,8 +20,8 @@ class CNetAgent:
 		self.episodes_seen = 0
 		self.dru = DRU(opt.game_comm_sigma, opt.model_comm_narrow)
 		self.id = index
-		self.optimizer = optim.RMSprop(params=model.params, lr=opt.learningrate, momentum=momentum)
 
+		self.optimizer = optim.RMSprop(params=model.get_params(), lr=opt.learningrate, momentum=opt.momentum)
 		# self.unroll_length = opt.nsteps + 1
 		# self.unroll_model()
 
@@ -58,7 +58,7 @@ class CNetAgent:
 		if not opt.model_dial:
 			comm_value = torch.zeros(opt.bs)
 
-		should_select_random = self._eps_flip(opt.eps)
+		should_select_random = self._eps_flip(eps)
 
 		# Get action
 		for b in range(opt.bs):
@@ -95,9 +95,10 @@ class CNetAgent:
 
 	def _episode_loss(self, episode):
 		# divide loss by game_nagents*bs
+		opt = self.opt
 		agent_idx = self.id - 1
-		total_loss = torch.zeros(bs).float()
-		for b in self.opt.bs:
+		total_loss = torch.zeros(opt.bs).float()
+		for b in range(self.opt.bs):
 			b_steps = episode.steps[b].item()
 			for step in range(b_steps):
 				record = episode.step_records[step]
@@ -118,13 +119,15 @@ class CNetAgent:
 
 	def learn_from_episode(self, episode):
 		loss = self._episode_loss(episode)
-		print('loss', loss)
-		loss.backward()
-		clip_grad_norm(parameters=model.params, max_norm=10)
-		optimizer.step()
+		self.optimizer.zero_grad()
+		loss.backward(retain_graph=True)
+		clip_grad_norm(parameters=self.model.get_params(), max_norm=10)
+		self.optimizer.step()
 
 		self.episodes_seen = self.episodes_seen + 1
 		if self.episodes_seen % self.opt.step_target == 0:
-			# self.model_target = copy.deepcopy(self.model)
-			self.model_target.load_state_dict(self.mode.state_dict())
+			self.model_target = copy.deepcopy(self.model)
+			# self.model_target.load_state_dict(self.model.state_dict())
+
+		# print('episode:', self.episodes_seen, 'loss', loss)
 
