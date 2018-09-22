@@ -15,7 +15,7 @@ class DRU:
 		return m_reg
 
 	def discretize(self, m):
-		return torch.sigmoid((m.gt(0.5) - 0.5) * self.sigma * 20)
+		return torch.sigmoid((m.gt(0.5).float() - 0.5) * self.sigma * 20)
 
 	def forward(self, m, train_mode):
 		if train_mode:

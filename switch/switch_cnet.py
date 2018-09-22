@@ -28,14 +28,12 @@ class SwitchCNet(nn.Module):
 		# Action aware
 		if opt.model_action_aware:
 			if opt.model_dial:
-				self.prev_action_lookup = nn.Embedding(opt.game_action_space_total + 1, opt.model_rnn_size)
+				self.prev_action_lookup = nn.Embedding(opt.game_action_space_total, opt.model_rnn_size)
 			else:
 				self.prev_action_lookup = nn.Embedding(opt.game_action_space + 1, opt.model_rnn_size)
 				self.prev_message_lookup = nn.Embedding(opt.game_comm_bits + 1, opt.model_rnn_size)
 
 		# Communication enabled
-		# Note if SwitchCNet is training, DRU should add noise + non-linearity
-		# If SwitchCnet is executing in test mode, DRU should discretize messages
 		if opt.comm_enabled:
 			self.messages_mlp = nn.Sequential()
 			if opt.model_dial and opt.model_bn:
@@ -86,7 +84,6 @@ class SwitchCNet(nn.Module):
 		hidden = Variable(hidden)
 		prev_action = Variable(prev_action)
 		agent_index = Variable(agent_index)
-		messages = Variable(messages, requires_grad=True)
 
 		opt = self.opt
 		z_a, z_o, z_u, z_m = [0]*4
@@ -99,12 +96,12 @@ class SwitchCNet(nn.Module):
 			z_u = self.prev_action_lookup(prev_action)
 			if prev_message:
 				z_u += self.prev_message_lookup(messages[:, agent_index])
-		z_m = self.messages_mlp(messages.view(-1, self.comm_size).contiguous())
+
+		z_m = self.messages_mlp(messages.view(-1, self.comm_size))
 
 		z = z_a + z_o + z_u + z_m
 		z = z.unsqueeze(1)
 
-		model_rnn_size = self.opt.model_rnn_size
 		rnn_out, _ = self.rnn(z, hidden=hidden)
 		outputs = self.outputs(rnn_out[:, -1, :])
 

@@ -47,6 +47,8 @@ class CNetAgent:
 
 	def select_action_and_comm(self, step, q, eps=0, train_mode=False):
 		# eps-Greedy action selector
+		if not train_mode:
+			eps = 0
 		opt = self.opt
 		action_range, comm_range = self.game.get_action_range(step, self.id)
 		action = torch.zeros(opt.bs, dtype=torch.long)
@@ -82,8 +84,8 @@ class CNetAgent:
 					else:		
 						comm_value[b], comm_action[b] = q[b, c_range].max(0)
 					comm_action[b] = comm_action[b] + 1
-					comm_vector[b, comm_action[b]] = 1
-				else:
+					comm_vector[b][comm_action[b]] = 1
+				elif opt.model_dial:
 					comm_vector[b] = self.dru.forward(q[b, c_range], train_mode=train_mode) # apply DRU
 			
 		return (action, action_value), (comm_vector, comm_action, comm_value)
@@ -93,7 +95,7 @@ class CNetAgent:
 		hidden, q = self.model_t[t].forward(*inputs)
 		return hidden, q
 
-	def _episode_loss(self, episode):
+	def episode_loss(self, episode):
 		# divide loss by game_nagents*bs
 		opt = self.opt
 		agent_idx = self.id - 1
@@ -102,31 +104,32 @@ class CNetAgent:
 			b_steps = episode.steps[b].item()
 			for step in range(b_steps):
 				record = episode.step_records[step]
-				next_record = None
-				if step < b_steps - 1:
-					next_record = episode.step_records[step + 1]
-				r_t = record.r_t[b]
-				q_a_t = record.q_a_t[b]
-				y = r_t
-				if next_record is not None:
-					y = y + self.opt.gamma * next_record.q_a_max_t[b]
-				td = (y - q_a_t) ** 2
-				total_loss[b] = total_loss[b] + td.sum()
-
+				for i in range(self.opt.game_nagents):
+					# import pdb; pdb.set_trace()
+					if record.a_t[b][i].item() > 0:
+					# if True:
+						# compute loss
+						r_t = record.r_t[b][i]
+						q_a_t = record.q_a_t[b][i]
+						y = r_t
+						if not record.terminal[b]:
+							y = y + self.opt.gamma * record.q_a_max_t[b][i]
+						td = (y - q_a_t) ** 2
+						total_loss[b] = total_loss[b] + td.sum()
 		loss = total_loss.sum()
 		loss = loss/(self.opt.bs * self.opt.game_nagents)
 		return loss
 
 	def learn_from_episode(self, episode):
-		loss = self._episode_loss(episode)
 		self.optimizer.zero_grad()
+		loss = self.episode_loss(episode)
 		loss.backward(retain_graph=True)
+		parameters = self.model.get_params()
 		clip_grad_norm(parameters=self.model.get_params(), max_norm=10)
 		self.optimizer.step()
 
 		self.episodes_seen = self.episodes_seen + 1
 		if self.episodes_seen % self.opt.step_target == 0:
-			# self.model_target = copy.deepcopy(self.model)
 			self.model_target.load_state_dict(self.model.state_dict())
 
 		# print('episode:', self.episodes_seen, 'loss', loss)

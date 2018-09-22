@@ -2,6 +2,9 @@ import copy
 
 import numpy as np
 import torch
+import matplotlib as mpl
+mpl.use('TkAgg')
+import matplotlib.pyplot as plt
 
 from utils.dotdic import DotDic
 from modules.dru import DRU
@@ -32,6 +35,8 @@ class Arena:
 		record.r_t = torch.zeros(opt.bs, opt.game_nagents)
 		record.terminal = torch.zeros(opt.bs)
 
+		record.agent_inputs = []
+
 		# Track actions at time t per agent
 		record.a_t = torch.zeros(opt.bs, opt.game_nagents, dtype=torch.long)
 		if not opt.model_dial:
@@ -43,8 +48,6 @@ class Arena:
 			record.comm = torch.zeros(opt.bs, opt.game_nagents, opt.game_comm_bits, dtype=comm_dtype)
 			if opt.model_dial and opt.model_target:
 				record.comm_target = record.comm.clone()
-				
-		record.d_comm = torch.zeros(opt.bs, opt.game_nagents, opt.game_comm_bits)
 
 		# Track hidden state per time t per agent
 		record.hidden = torch.zeros(opt.bs, opt.game_nagents, opt.model_rnn_size)
@@ -86,10 +89,12 @@ class Arena:
 					if comm_limited is not None:
 						comm_lim = torch.zeros(opt.bs, 1, opt.game_comm_bits)
 						for b in range(opt.bs):
-							comm_lim[b] = comm[b][comm_limited[b] - 1]
+							if comm_limited[b].item() > 0:
+								comm_lim[b] = comm[b][comm_limited[b] - 1]
 						comm = comm_lim
 					else:
 						comm[:, agent_idx].zero_()
+				comm.retain_grad()
 
 				# Get prev action per batch
 				prev_action = None
@@ -113,6 +118,7 @@ class Arena:
 					'prev_action': prev_action,
 					'agent_index': batch_agent_index
 				}
+				episode.step_records[step].agent_inputs.append(agent_inputs)
 
 				# Compute model output (Q function + message bits)
 				hidden_t, q_t = agent.model(**agent_inputs)
@@ -130,7 +136,7 @@ class Arena:
 					episode.step_records[step].a_comm_t[:, agent_idx] = comm_action
 					episode.step_records[step].q_comm_t[:, agent_idx] = comm_value
 
-			# Update game to next step
+			# Update game state
 			a_t = episode.step_records[step].a_t
 			episode.step_records[step].r_t, episode.step_records[step].terminal = \
 				self.game.step(a_t)
@@ -144,13 +150,14 @@ class Arena:
 
 					if episode.step_records[step].terminal[b]:
 						episode.ended[b] = 1
-			
+
 			# Target-network forward pass
 			if opt.model_target and train_mode:
 				for i in range(1, opt.game_nagents):
 					agent_target = agents[i]
 					agent_idx = i - 1
 
+					agent_inputs = episode.step_records[step].agent_inputs[agent_idx]
 					comm_target = agent_inputs.get('messages', None)
 
 					if opt.comm_enabled and opt.model_dial:
@@ -159,11 +166,13 @@ class Arena:
 						if comm_limited is not None:
 							comm_lim = torch.zeros(opt.bs, 1, opt.game_comm_bits)
 							for b in range(opt.bs):
-								comm_lim[b] = comm_target[b][comm_limited[b] - 1]
+								if comm_limited[b].item() > 0:
+									comm_lim[b] = comm_target[b][comm_limited[b] - 1]
 							comm_target = comm_lim
 						else:
 							comm_target[:, agent_idx].zero_()
 
+					comm_target.retain_grad()
 					agent_target_inputs = copy.copy(agent_inputs)
 					agent_target_inputs['messages'] = comm_target
 					agent_target_inputs['hidden'] = \
@@ -192,19 +201,22 @@ class Arena:
 
 		# Collect stats
 		episode.game_stats = self.game.get_stats(episode.steps)
+		# import pdb; pdb.set_trace()
 
 		return episode
 
 	def average_reward(self, episode, normalized=True):
-		print(episode.r[:10])
-		print(episode.steps[:10])
-		print(episode.step_records[-2].comm[0, :])
+		# print(episode.r[:, 0])
+		# print(episode.steps[:10])
+		# print(episode.step_records[-2].comm[0, :])
 			
 		reward = episode.r.sum()/(self.opt.bs * self.opt.game_nagents)
 		if normalized:
 			god_reward = episode.game_stats.god_reward.sum()/self.opt.bs
 			if reward == god_reward:
 				reward = 1
+			elif god_reward == 0:
+				reward = 0
 			else:
 				reward = reward/god_reward
 
@@ -215,10 +227,22 @@ class Arena:
 		if reset:
 			for agent in agents[1:]:
 				agent.reset()
+
+		rewards = []
 		for e in range(opt.nepisodes):
 			# run episode
 			episode = self.run_episode(agents, train_mode=True)
-			print('episode', e, 'avg reward', self.average_reward(episode))
+			norm_r = self.average_reward(episode)
+			# rewards.append(norm_r)
+			print('episode', e, 'avg reward', norm_r)
 			for agent in agents[1:]:
 				agent.learn_from_episode(episode)
 
+			if e % opt.step_test == 0:
+				episode = self.run_episode(agents, train_mode=False)
+				norm_r = self.average_reward(episode)
+				rewards.append(norm_r)
+				print('TEST episode', e, 'avg reward', norm_r)
+
+		plt.plot(np.array(range(len(rewards))), rewards)
+		plt.show()

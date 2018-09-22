@@ -30,7 +30,7 @@ opt = DotDic({
 	'learningrate': 1e-5,
 	'momentum': 0.95,
 	'eps': 0.05,
-	'nepisodes': 5000,
+	'nepisodes': 1500,
 	'step': 100,
 	'step_test': 10,
 	'step_target': 100,

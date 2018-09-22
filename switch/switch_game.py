@@ -131,7 +131,7 @@ class SwitchGame:
 			# import pdb; pdb.set_trace()
 			has_been = self.has_been[b][:steps[b]].sum(0).gt(0).sum().item()
 			if has_been == self.opt.game_nagents:
-				reward[b] = 1
+				reward[b] = self.reward_all_live
 
 		return reward
 
@@ -143,4 +143,9 @@ class SwitchGame:
 		stats.god_reward = self.god_strategy_reward(steps)
 		return stats
 
+	def describe_game(self, b=0):
+		print('has been:', self.has_been[b])
+		print('num has been:', self.has_been[b].sum(0).gt(0).sum().item())
+		print('active agents: ', self.active_agent[b])
+		print('reward:', self.reward[b])
 
