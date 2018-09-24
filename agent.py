@@ -50,11 +50,11 @@ class CNetAgent:
 		if not train_mode:
 			eps = 0
 		opt = self.opt
-		action_range, comm_range = self.game.get_action_range(step, self.id)
+		action_range, comm_range = self.game.get_action_range(step, self)
 		action = torch.zeros(opt.bs, dtype=torch.long)
 		action_value = torch.zeros(opt.bs)
 		comm_dtype = opt.model_dial and torch.float or torch.long
-		comm_action = torch.zeros(opt.bs)
+		comm_action = torch.zeros(opt.bs).int()
 		comm_vector = torch.zeros(opt.bs, opt.game_comm_bits)
 		comm_value = None
 		if not opt.model_dial:
@@ -83,8 +83,9 @@ class CNetAgent:
 						comm_value[b] = q[b, comm_action[b]]
 					else:		
 						comm_value[b], comm_action[b] = q[b, c_range].max(0)
-					comm_action[b] = comm_action[b] + 1
-					comm_vector[b][comm_action[b]] = 1
+					comm_action[b] = comm_action[b] # 0-indexed
+					# import pdb; pdb.set_trace()
+					comm_vector[b][comm_action[b].item()] = 1 # @todo(translate |A| left to normalize to array index)
 				elif opt.model_dial:
 					comm_vector[b] = self.dru.forward(q[b, c_range], train_mode=train_mode) # apply DRU
 			

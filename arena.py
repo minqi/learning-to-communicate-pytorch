@@ -85,7 +85,7 @@ class Arena:
 				comm = None
 				if opt.comm_enabled:
 					comm = episode.step_records[step].comm.clone()
-					comm_limited = self.game.get_comm_limited(step, agent.id)
+					comm_limited = self.game.get_comm_limited(step, agent)
 					if comm_limited is not None:
 						comm_lim = torch.zeros(opt.bs, 1, opt.game_comm_bits)
 						for b in range(opt.bs):
@@ -105,7 +105,7 @@ class Arena:
 					if not opt.model_dial:
 						prev_message = torch.zeros(opt.bs, dtype=torch.long)
 						if step > 1:
-							prev_message = episode_step_records[step - 1].a_comm_t[:, agent_idx]
+							prev_message = episode.step_records[step - 1].a_comm_t[:, agent_idx]
 						prev_action = (prev_action, prev_message)
 
 				# Batch agent index for input into model
@@ -162,7 +162,7 @@ class Arena:
 
 					if opt.comm_enabled and opt.model_dial:
 						comm_target = episode.step_records[step].comm_target.clone()
-						comm_limited = self.game.get_comm_limited(step, agent_target.id)
+						comm_limited = self.game.get_comm_limited(step, agent_target)
 						if comm_limited is not None:
 							comm_lim = torch.zeros(opt.bs, 1, opt.game_comm_bits)
 							for b in range(opt.bs):
@@ -187,9 +187,10 @@ class Arena:
 
 					# save target actions, comm, and q_a_t, q_a_max_t
 					episode.step_records[step].q_a_max_t[:, agent_idx] = action_value
-					episode.step_records[step + 1].comm_target[:, agent_idx] = comm_vector
-					if not opt.model_dial:
-						episode.step_records[step].q_comm_max_t[:, agent_index] = comm_value
+					if opt.model_dial:
+						episode.step_records[step + 1].comm_target[:, agent_idx] = comm_vector
+					else:
+						episode.step_records[step].q_comm_max_t[:, agent_idx] = comm_value
 
 			# Update step
 			step = step + 1
