@@ -1,3 +1,5 @@
+import copy
+
 from utils.dotdic import DotDic
 from arena import Arena
 from agent import CNetAgent
@@ -30,7 +32,7 @@ opt = DotDic({
 	'learningrate': 1e-5,
 	'momentum': 0.95,
 	'eps': 0.05,
-	'nepisodes': 1500,
+	'nepisodes': 2000,
 	'step': 100,
 	'step_test': 10,
 	'step_target': 100,
@@ -59,6 +61,8 @@ def init_action_and_comm_bits(opt):
 def init_opt(opt):
 	if not opt.model_rnn_layers:
 		opt.model_rnn_layers = 2
+	if not opt.model_avg_q:
+		opt.model_avg_q = False
 	opt = init_action_and_comm_bits(opt)
 	return opt
 
@@ -79,10 +83,12 @@ def create_cnet(opt):
 def create_agents(opt, game):
 	agents = [None] # 1-index agents
 	cnet = create_cnet(opt)
+	cnet_target = copy.deepcopy(cnet)
 	for i in range(1, opt.game_nagents + 1):
-		agents.append(CNetAgent(opt, game=game, model=cnet, index=i))
+		agents.append(CNetAgent(opt, game=game, model=cnet, target=cnet_target, index=i))
 		if not opt.model_know_share:
 			cnet = create_cnet(opt)
+			cnet_target = copy.deepcopy(cnet)
 	return agents
 
 def main(opt):

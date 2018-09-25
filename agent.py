@@ -12,11 +12,11 @@ from utils.dotdic import DotDic
 from modules.dru import DRU
 
 class CNetAgent:
-	def __init__(self, opt, game, model, index):
+	def __init__(self, opt, game, model, target, index):
 		self.opt = opt
 		self.game = game
 		self.model = model
-		self.model_target = copy.deepcopy(model)
+		self.model_target = target
 		self.episodes_seen = 0
 		self.dru = DRU(opt.game_comm_sigma, opt.model_comm_narrow)
 		self.id = index
@@ -50,10 +50,11 @@ class CNetAgent:
 		if not train_mode:
 			eps = 0
 		opt = self.opt
-		action_range, comm_range = self.game.get_action_range(step, self)
+		action_range, comm_range = self.game.get_action_range(step, self.id)
 		action = torch.zeros(opt.bs, dtype=torch.long)
 		action_value = torch.zeros(opt.bs)
 		comm_dtype = opt.model_dial and torch.float or torch.long
+		comm_dtype = torch.float
 		comm_action = torch.zeros(opt.bs).int()
 		comm_vector = torch.zeros(opt.bs, opt.game_comm_bits)
 		comm_value = None
@@ -76,21 +77,20 @@ class CNetAgent:
 
 			if comm_range[b, 1].item() > comm_range[b, 0].item():
 				c_range = range(comm_range[b, 0].item(), comm_range[b, 1].item())
+				q_c_range = range(c_range[0] + self.opt.game_action_space, opt.game_action_space_total)
 				if not opt.model_dial and comm_range[b, 1].item() > 0:
 					if should_select_random[b]:
 						# Select random comm
 						comm_action[b] = self._random_choice(c_range)
 						comm_value[b] = q[b, comm_action[b]]
 					else:		
-						comm_value[b], comm_action[b] = q[b, c_range].max(0)
-					comm_action[b] = comm_action[b] # 0-indexed
-					# import pdb; pdb.set_trace()
-					comm_vector[b][comm_action[b].item()] = 1 # @todo(translate |A| left to normalize to array index)
+						comm_value[b], comm_action[b] = q[b, q_c_range].max(0)
+					comm_action[b] = comm_action[b] + 1 
+					comm_vector[b][comm_action[b].item() - 1] = 1
 				elif opt.model_dial:
 					comm_vector[b] = self.dru.forward(q[b, c_range], train_mode=train_mode) # apply DRU
-			
-		return (action, action_value), (comm_vector, comm_action, comm_value)
 
+		return (action, action_value), (comm_vector, comm_action, comm_value)
 
 	def forward(t, *inputs):
 		hidden, q = self.model_t[t].forward(*inputs)
@@ -99,23 +99,35 @@ class CNetAgent:
 	def episode_loss(self, episode):
 		# divide loss by game_nagents*bs
 		opt = self.opt
-		agent_idx = self.id - 1
 		total_loss = torch.zeros(opt.bs).float()
 		for b in range(self.opt.bs):
 			b_steps = episode.steps[b].item()
 			for step in range(b_steps):
 				record = episode.step_records[step]
 				for i in range(self.opt.game_nagents):
-					# import pdb; pdb.set_trace()
 					if record.a_t[b][i].item() > 0:
-					# if True:
-						# compute loss
 						r_t = record.r_t[b][i]
-						q_a_t = record.q_a_t[b][i]
 						y = r_t
+						q_a_t = record.q_a_t[b][i]
+						q_t = q_a_t
+						if not opt.model_dial:
+							if opt.model_avg_q:
+								q_t = (q_a_t + record.q_comm_t[b][i])/2.0
+							else:
+								q_t = q_a_t + record.q_comm_t[b][i]
+							y = y + r_t
+						
 						if not record.terminal[b]:
-							y = y + self.opt.gamma * record.q_a_max_t[b][i]
-						td = (y - q_a_t) ** 2
+							q_next_max = record.q_a_max_t[b][i]
+							if not opt.model_dial:
+								if opt.model_avg_q:
+									q_next_max = (q_next_max + record.q_comm_max_t[b][i])/2.0
+								else:
+									q_next_max = q_next_max + record.q_comm_max_t[b][i]
+									
+							y = y + self.opt.gamma * q_next_max
+
+						td = (y - q_t) ** 2
 						total_loss[b] = total_loss[b] + td.sum()
 		loss = total_loss.sum()
 		loss = loss/(self.opt.bs * self.opt.game_nagents)

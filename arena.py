@@ -45,6 +45,7 @@ class Arena:
 		# Track messages sent at time t per agent
 		if opt.comm_enabled:
 			comm_dtype = opt.model_dial and torch.float or torch.long
+			comm_dtype = torch.float
 			record.comm = torch.zeros(opt.bs, opt.game_nagents, opt.game_comm_bits, dtype=comm_dtype)
 			if opt.model_dial and opt.model_target:
 				record.comm_target = record.comm.clone()
@@ -85,7 +86,7 @@ class Arena:
 				comm = None
 				if opt.comm_enabled:
 					comm = episode.step_records[step].comm.clone()
-					comm_limited = self.game.get_comm_limited(step, agent)
+					comm_limited = self.game.get_comm_limited(step, agent.id)
 					if comm_limited is not None:
 						comm_lim = torch.zeros(opt.bs, 1, opt.game_comm_bits)
 						for b in range(opt.bs):
@@ -94,7 +95,7 @@ class Arena:
 						comm = comm_lim
 					else:
 						comm[:, agent_idx].zero_()
-				comm.retain_grad()
+				# comm.retain_grad()
 
 				# Get prev action per batch
 				prev_action = None
@@ -153,7 +154,7 @@ class Arena:
 
 			# Target-network forward pass
 			if opt.model_target and train_mode:
-				for i in range(1, opt.game_nagents):
+				for i in range(1, opt.game_nagents + 1):
 					agent_target = agents[i]
 					agent_idx = i - 1
 
@@ -162,7 +163,7 @@ class Arena:
 
 					if opt.comm_enabled and opt.model_dial:
 						comm_target = episode.step_records[step].comm_target.clone()
-						comm_limited = self.game.get_comm_limited(step, agent_target)
+						comm_limited = self.game.get_comm_limited(step, agent.id)
 						if comm_limited is not None:
 							comm_lim = torch.zeros(opt.bs, 1, opt.game_comm_bits)
 							for b in range(opt.bs):
@@ -172,7 +173,7 @@ class Arena:
 						else:
 							comm_target[:, agent_idx].zero_()
 
-					comm_target.retain_grad()
+					# comm_target.retain_grad()
 					agent_target_inputs = copy.copy(agent_inputs)
 					agent_target_inputs['messages'] = comm_target
 					agent_target_inputs['hidden'] = \
@@ -183,7 +184,7 @@ class Arena:
 
 					# Choose next arg max action and comm
 					(action, action_value), (comm_vector, comm_action, comm_value) = \
-						agent.select_action_and_comm(step, q_t, eps=0, train_mode=True)
+						agent.select_action_and_comm(step, q_target_t, eps=0, train_mode=True)
 
 					# save target actions, comm, and q_a_t, q_a_max_t
 					episode.step_records[step].q_a_max_t[:, agent_idx] = action_value
@@ -197,20 +198,12 @@ class Arena:
 			if episode.ended.sum().item() < opt.bs:
 				episode.step_records[step].s_t = self.game.get_state()
 
-			# import pdb; pdb.set_trace()
-			# print('finished step', step - 1, 'reward:', episode.r.mean().item())
-
 		# Collect stats
 		episode.game_stats = self.game.get_stats(episode.steps)
-		# import pdb; pdb.set_trace()
 
 		return episode
 
-	def average_reward(self, episode, normalized=True):
-		# print(episode.r[:, 0])
-		# print(episode.steps[:10])
-		# print(episode.step_records[-2].comm[0, :])
-			
+	def average_reward(self, episode, normalized=True):			
 		reward = episode.r.sum()/(self.opt.bs * self.opt.game_nagents)
 		if normalized:
 			god_reward = episode.game_stats.god_reward.sum()/self.opt.bs

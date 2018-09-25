@@ -80,19 +80,20 @@ class SwitchCNet(nn.Module):
 		return list(self.parameters())
 
 	def forward(self, s_t, messages, hidden, prev_action, agent_index):
+		opt = self.opt
+
 		s_t = Variable(s_t)
 		hidden = Variable(hidden)
 		prev_message = None
-		if self.opt.model_dial:
+		if opt.model_dial:
 			prev_action = Variable(prev_action)
 		else:
-			# import pdb; pdb.set_trace()
 			prev_action, prev_message = prev_action
 			prev_action = Variable(prev_action)
 			prev_message = Variable(prev_message)
+			messages = Variable(messages)
 		agent_index = Variable(agent_index)
 
-		opt = self.opt
 		z_a, z_o, z_u, z_m = [0]*4
 		z_a = self.agent_lookup(agent_index)
 		z_o = self.state_lookup(s_t)
