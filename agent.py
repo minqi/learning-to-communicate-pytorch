@@ -65,7 +65,8 @@ class CNetAgent:
 
 		# Get action
 		for b in range(opt.bs):
-			a_range = range(action_range[b, 0].item()-1, action_range[b, 1].item())
+			a_lower_bound = max(action_range[b, 0].item()-1, 0)
+			a_range = range(a_lower_bound, action_range[b, 1].item())
 			if action_range[b, 1].item() > 0:
 				if should_select_random[b]:
 					# Select random action
@@ -79,8 +80,8 @@ class CNetAgent:
 
 			if comm_range[b, 1].item() > comm_range[b, 0].item():
 				c_range = range(comm_range[b, 0].item(), comm_range[b, 1].item())
-				q_c_range = range(c_range[0] + opt.game_action_space, opt.game_action_space_total)
 				if not opt.model_dial and comm_range[b, 1].item() > 0:
+					q_c_range = range(c_range[0] + opt.game_action_space, opt.game_action_space_total)
 					if should_select_random[b]:
 						# Select random comm
 						comm_action[b] = self._random_choice(c_range)
@@ -101,7 +102,6 @@ class CNetAgent:
 		return hidden, q
 
 	def episode_loss(self, episode):
-		# divide loss by game_nagents*bs
 		opt = self.opt
 		total_loss = torch.zeros(opt.bs).float()
 		for b in range(self.opt.bs):
@@ -116,7 +116,6 @@ class CNetAgent:
 					q_comm_t = None
 					q_a_next_max = None
 					q_comm_next_max = None
-					q_target = 0
 
 					if record.a_t[b][i].item() > 0:
 						if record.terminal[b]:
@@ -133,12 +132,13 @@ class CNetAgent:
 						else:
 							next_record = episode.step_records[step + 1]
 							q_comm_next_max = next_record.q_comm_max_t[b][i]
-							td_action = r_t + opt.gamma * q_a_next_max - q_a_t
+							td_comm = r_t + opt.gamma * q_comm_next_max - q_comm_t
 							if opt.model_avg_q:
 								td_action = (td_action + r_t + opt.gamma * q_comm_next_max - q_a_t)/2.0
 								td_comm = (td_comm + r_t + opt.gamma * q_a_next_max - q_comm_t)/2.0
 
-					loss_t = td_action ** 2 + td_comm ** 2
+					# loss_t = (td_action + td_comm) ** 2
+					loss_t = (td_action ** 2) + (td_comm ** 2)
 					total_loss[b] = total_loss[b] + loss_t
 		loss = total_loss.sum()
 		loss = loss/(self.opt.bs * self.opt.game_nagents)
@@ -148,7 +148,6 @@ class CNetAgent:
 		self.optimizer.zero_grad()
 		loss = self.episode_loss(episode)
 		loss.backward(retain_graph=True)
-		parameters = self.model.get_params()
 		clip_grad_norm(parameters=self.model.get_params(), max_norm=10)
 		self.optimizer.step()
 
