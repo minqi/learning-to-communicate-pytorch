@@ -2,6 +2,14 @@
 
 This is a PyTorch implementation of the [original Lua code release](https://github.com/iassael/learning-to-communicate).
 
+## Execution
+```
+$ virtualenv .venv
+$ source .venv/bin/activate
+$ pip install -r requirements.txt
+$ python main.py
+```
+
 ## Bibtex
     @inproceedings{foerster2016learning,
         title={Learning to communicate with deep multi-agent reinforcement learning},
