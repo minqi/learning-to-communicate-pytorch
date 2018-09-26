@@ -29,7 +29,7 @@ opt = DotDic({
 	'model_rnn_size': 128,
 	'model_rnn_dropout_rate': 0,
 	'bs': 32,
-	'learningrate': 5e-4,
+	'learningrate': 1e-4,
 	'momentum': 0.95,
 	'eps': 0.05,
 	'nepisodes': 5000,
