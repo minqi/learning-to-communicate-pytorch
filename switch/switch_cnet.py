@@ -48,7 +48,7 @@ class SwitchCNet(nn.Module):
 		self.rnn = RNN(
 			mode=rnn_mode, input_size=opt.model_rnn_size, hidden_size=opt.model_rnn_size, 
 			num_layers=opt.model_rnn_layers, use_bn=opt.model_bn, bn_max_t=6, dropout_rate=dropout_rate)
-		
+
 
 		# Set up outputs
 		self.outputs = nn.Sequential()
@@ -86,12 +86,13 @@ class SwitchCNet(nn.Module):
 		s_t = Variable(s_t)
 		hidden = Variable(hidden)
 		prev_message = None
-		if opt.model_dial:
+		if opt.model_dial and opt.model_action_aware:
 			prev_action = Variable(prev_action)
 		else:
-			prev_action, prev_message = prev_action
-			prev_action = Variable(prev_action)
-			prev_message = Variable(prev_message)
+			if opt.model_action_aware:
+				prev_action, prev_message = prev_action
+				prev_action = Variable(prev_action)
+				prev_message = Variable(prev_message)
 			messages = Variable(messages)
 		agent_index = Variable(agent_index)
 

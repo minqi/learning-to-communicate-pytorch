@@ -54,35 +54,34 @@ class CNetAgent:
 
 		# Get action
 		for b in range(opt.bs):
-			a_lower_bound = max(action_range[b, 0].item()-1, 0)
-			a_range = range(a_lower_bound, action_range[b, 1].item())
+			q_a_range = range(0, opt.game_action_space)
 			if action_range[b, 1].item() > 0:
+				a_range = range(action_range[b, 0].item(), action_range[b, 1].item() + 1)
 				if should_select_random[b]:
-					# Select random action
 					action[b] = self._random_choice(a_range)
 					action_value[b] = q[b, action[b]]
 				else:
 					action_value[b], action[b] = q[b, a_range].max(0)
 				action[b] = action[b] + 1
 			elif target:
-				action_value[b], _ = q[b, range(0, opt.game_action_space)].max(0)
+				action_value[b], _ = q[b, q_a_range].max(0)
 
-			if comm_range[b, 1].item() > comm_range[b, 0].item():
-				c_range = range(comm_range[b, 0].item(), comm_range[b, 1].item())
-				if not opt.model_dial and comm_range[b, 1].item() > 0:
-					q_c_range = range(c_range[0] + opt.game_action_space, opt.game_action_space_total)
+			q_c_range = range(opt.game_action_space, opt.game_action_space_total)
+			if comm_range[b, 1].item() > 0:
+				c_range = range(comm_range[b, 0].item(), comm_range[b, 1].item() + 1)
+				if not opt.model_dial:
 					if should_select_random[b]:
-						# Select random comm
 						comm_action[b] = self._random_choice(c_range)
 						comm_value[b] = q[b, comm_action[b]]
+						comm_action[b] = comm_action[b] - opt.game_action_space
 					else:
-						comm_value[b], comm_action[b] = q[b, q_c_range].max(0)
-					comm_action[b] = comm_action[b] + 1 
-					comm_vector[b][comm_action[b].item() - 1] = 1
+						comm_value[b], comm_action[b] = q[b, c_range].max(0)
+					comm_vector[b][comm_action[b]] = 1
+					comm_action[b] = comm_action[b] + 1
 				elif opt.model_dial:
-					comm_vector[b] = self.dru.forward(q[b, c_range], train_mode=train_mode) # apply DRU
+					comm_vector[b] = self.dru.forward(q[b, q_c_range], train_mode=train_mode) # apply DRU
 			elif not opt.model_dial and target:
-				comm_value[b], _ = q[b, range(opt.game_action_space, opt.game_action_space_total)].max(0)
+				comm_value[b], _ = q[b, q_c_range].max(0)
 
 		return (action, action_value), (comm_vector, comm_action, comm_value)
 
@@ -92,7 +91,7 @@ class CNetAgent:
 
 	def episode_loss(self, episode):
 		opt = self.opt
-		total_loss = torch.zeros(opt.bs).float()
+		total_loss = torch.zeros(opt.bs)
 		for b in range(self.opt.bs):
 			b_steps = episode.steps[b].item()
 			for step in range(b_steps):
@@ -102,7 +101,7 @@ class CNetAgent:
 					td_comm = 0
 					r_t = record.r_t[b][i]
 					q_a_t = record.q_a_t[b][i] 
-					q_comm_t = None
+					q_comm_t = 0
 
 					if record.a_t[b][i].item() > 0:
 						if record.terminal[b]:
@@ -110,9 +109,10 @@ class CNetAgent:
 						else:
 							next_record = episode.step_records[step + 1]
 							q_next_max = next_record.q_a_max_t[b][i]
-							if opt.model_avg_q:
-								q_next_max =(q_next_max + next_record.q_comm_max_t[b][i])/2
-							td_action = r_t + opt.gamma * q_next_max - q_a_t
+							if not opt.model_dial and opt.model_avg_q:
+								q_next_max = (q_next_max + next_record.q_comm_max_t[b][i])/2.0
+							# td_action = r_t + opt.gamma * q_next_max - q_a_t
+							td_action = r_t + opt.gamma * q_next_max - (q_a_t + record.q_comm_t[b][i])/2.0
 
 					if not opt.model_dial and record.a_comm_t[b][i].item() > 0:
 						q_comm_t = record.q_comm_t[b][i]
@@ -122,10 +122,12 @@ class CNetAgent:
 							next_record = episode.step_records[step + 1]
 							q_next_max = next_record.q_comm_max_t[b][i]
 							if opt.model_avg_q: 
-								q_next_max = (q_next_max + next_record.q_a_max_t[b][i])/2
-							td_comm = r_t + opt.gamma * q_next_max - q_comm_t
+								q_next_max = (q_next_max + next_record.q_a_max_t[b][i])/2.0
+							# td_comm = r_t + opt.gamma * q_next_max - q_comm_t
+							td_comm = r_t + opt.gamma * q_next_max - (q_comm_t + record.q_a_t[b][i])/2.0
 
-					loss_t = (td_action) ** 2 + (td_comm) ** 2 
+					# loss_t = (td_action) ** 2 + (td_comm) ** 2 
+					loss_t = (td_action) ** 2
 					total_loss[b] = total_loss[b] + loss_t
 		loss = total_loss.sum()
 		loss = loss/(self.opt.bs * self.opt.game_nagents)
@@ -141,4 +143,5 @@ class CNetAgent:
 		self.episodes_seen = self.episodes_seen + 1
 		if self.episodes_seen % self.opt.step_target == 0:
 			self.model_target.load_state_dict(self.model.state_dict())
+
 

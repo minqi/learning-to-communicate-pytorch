@@ -227,7 +227,6 @@ class Arena:
 			# run episode
 			episode = self.run_episode(agents, train_mode=True)
 			norm_r = self.average_reward(episode)
-			# rewards.append(norm_r)
 			print('episode', e, 'avg reward', norm_r)
 			if opt.model_know_share:
 				agents[1].learn_from_episode(episode)
