@@ -105,7 +105,8 @@ class CNetAgent:
 
 					if record.a_t[b][i].item() > 0:
 						if record.terminal[b]:
-							td_action = r_t - q_a_t
+							# td_action = r_t - q_a_t
+							td_action = r_t - (q_a_t + record.q_comm_t[b][i])/2.0
 						else:
 							next_record = episode.step_records[step + 1]
 							q_next_max = next_record.q_a_max_t[b][i]
