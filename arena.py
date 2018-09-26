@@ -184,7 +184,7 @@ class Arena:
 
 					# Choose next arg max action and comm
 					(action, action_value), (comm_vector, comm_action, comm_value) = \
-						agent.select_action_and_comm(step, q_target_t, eps=0, train_mode=True)
+						agent.select_action_and_comm(step, q_target_t, eps=0, target=True, train_mode=True)
 
 					# save target actions, comm, and q_a_t, q_a_max_t
 					episode.step_records[step].q_a_max_t[:, agent_idx] = action_value
@@ -227,10 +227,12 @@ class Arena:
 			# run episode
 			episode = self.run_episode(agents, train_mode=True)
 			norm_r = self.average_reward(episode)
-			# rewards.append(norm_r)
 			print('episode', e, 'avg reward', norm_r)
-			for agent in agents[1:]:
-				agent.learn_from_episode(episode)
+			if opt.model_know_share:
+				agents[1].learn_from_episode(episode)
+			else:
+				for agent in agents[1:]:
+					agent.learn_from_episode(episode)
 
 			if e % opt.step_test == 0:
 				episode = self.run_episode(agents, train_mode=False)
