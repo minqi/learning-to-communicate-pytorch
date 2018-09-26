@@ -20,23 +20,12 @@ class CNetAgent:
 		self.episodes_seen = 0
 		self.dru = DRU(opt.game_comm_sigma, opt.model_comm_narrow)
 		self.id = index
-
 		self.optimizer = optim.RMSprop(params=model.get_params(), lr=opt.learningrate, momentum=opt.momentum)
-		# self.unroll_length = opt.nsteps + 1
-		# self.unroll_model()
 
 	def reset(self):
 		self.model.reset_params()
 		self.model_target.reset_params()
 		self.episodes_seen = 0
-
-	def unroll_model(self, model):
-		self.model_t = []
-		self.model_target_t = []
-		model_target = copy.deepcopy(model)
-		for i in range(self.unroll_length):
-			self.model_t.append(model)
-			self.mode_target_t.append(model_target)
 
 	def _eps_flip(self, eps):
 		# Sample Bernoulli with P(True) = eps
@@ -45,7 +34,7 @@ class CNetAgent:
 	def _random_choice(self, items):
 		return torch.from_numpy(np.random.choice(items, 1)).item()
 
-	def select_action_and_comm(self, step, q, eps=0, train_mode=False):
+	def select_action_and_comm(self, step, q, eps=0, target=False, train_mode=False):
 		# eps-Greedy action selector
 		if not train_mode:
 			eps = 0
@@ -75,7 +64,7 @@ class CNetAgent:
 				else:
 					action_value[b], action[b] = q[b, a_range].max(0)
 				action[b] = action[b] + 1
-			else:
+			elif target:
 				action_value[b], _ = q[b, range(0, opt.game_action_space)].max(0)
 
 			if comm_range[b, 1].item() > comm_range[b, 0].item():
@@ -92,7 +81,7 @@ class CNetAgent:
 					comm_vector[b][comm_action[b].item() - 1] = 1
 				elif opt.model_dial:
 					comm_vector[b] = self.dru.forward(q[b, c_range], train_mode=train_mode) # apply DRU
-			elif not opt.model_dial:
+			elif not opt.model_dial and target:
 				comm_value[b], _ = q[b, range(opt.game_action_space, opt.game_action_space_total)].max(0)
 
 		return (action, action_value), (comm_vector, comm_action, comm_value)
@@ -114,16 +103,16 @@ class CNetAgent:
 					r_t = record.r_t[b][i]
 					q_a_t = record.q_a_t[b][i] 
 					q_comm_t = None
-					q_a_next_max = None
-					q_comm_next_max = None
 
 					if record.a_t[b][i].item() > 0:
 						if record.terminal[b]:
 							td_action = r_t - q_a_t
 						else:
 							next_record = episode.step_records[step + 1]
-							q_a_next_max = next_record.q_a_max_t[b][i]
-							td_action = r_t + opt.gamma * q_a_next_max - q_a_t
+							q_next_max = next_record.q_a_max_t[b][i]
+							if opt.model_avg_q:
+								q_next_max =(q_next_max + next_record.q_comm_max_t[b][i])/2
+							td_action = r_t + opt.gamma * q_next_max - q_a_t
 
 					if not opt.model_dial and record.a_comm_t[b][i].item() > 0:
 						q_comm_t = record.q_comm_t[b][i]
@@ -131,14 +120,12 @@ class CNetAgent:
 							td_comm = r_t - q_comm_t
 						else:
 							next_record = episode.step_records[step + 1]
-							q_comm_next_max = next_record.q_comm_max_t[b][i]
-							td_comm = r_t + opt.gamma * q_comm_next_max - q_comm_t
-							if opt.model_avg_q:
-								td_action = (td_action + r_t + opt.gamma * q_comm_next_max - q_a_t)/2.0
-								td_comm = (td_comm + r_t + opt.gamma * q_a_next_max - q_comm_t)/2.0
+							q_next_max = next_record.q_comm_max_t[b][i]
+							if opt.model_avg_q: 
+								q_next_max = (q_next_max + next_record.q_a_max_t[b][i])/2
+							td_comm = r_t + opt.gamma * q_next_max - q_comm_t
 
-					# loss_t = (td_action + td_comm) ** 2
-					loss_t = (td_action ** 2) + (td_comm ** 2)
+					loss_t = (td_action) ** 2 + (td_comm) ** 2 
 					total_loss[b] = total_loss[b] + loss_t
 		loss = total_loss.sum()
 		loss = loss/(self.opt.bs * self.opt.game_nagents)
@@ -154,6 +141,4 @@ class CNetAgent:
 		self.episodes_seen = self.episodes_seen + 1
 		if self.episodes_seen % self.opt.step_target == 0:
 			self.model_target.load_state_dict(self.model.state_dict())
-
-		# print('episode:', self.episodes_seen, 'loss', loss)
 

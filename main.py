@@ -32,7 +32,7 @@ opt = DotDic({
 	'learningrate': 1e-5,
 	'momentum': 0.95,
 	'eps': 0.05,
-	'nepisodes': 3000,
+	'nepisodes': 2000,
 	'step': 100,
 	'step_test': 10,
 	'step_target': 100,
@@ -62,7 +62,7 @@ def init_opt(opt):
 	if not opt.model_rnn_layers:
 		opt.model_rnn_layers = 2
 	if not opt.model_avg_q:
-		opt.model_avg_q = False
+		opt.model_avg_q = True
 	opt = init_action_and_comm_bits(opt)
 	return opt
 

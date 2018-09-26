@@ -48,6 +48,7 @@ class SwitchCNet(nn.Module):
 		self.rnn = RNN(
 			mode=rnn_mode, input_size=opt.model_rnn_size, hidden_size=opt.model_rnn_size, 
 			num_layers=opt.model_rnn_layers, use_bn=opt.model_bn, bn_max_t=6, dropout_rate=dropout_rate)
+		
 
 		# Set up outputs
 		self.outputs = nn.Sequential()

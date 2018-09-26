@@ -81,8 +81,6 @@ class SwitchGame:
 
 				comm_range_min = self.opt.model_dial and self.opt.game_action_space or 0
 				comm_range_max = self.opt.model_dial and self.opt.game_action_space_total or self.opt.game_comm_bits
-				# comm_range_min = self.opt.game_action_space
-				# comm_range_max = self.opt.game_action_space_total
 				comm_range[b] = torch.tensor(
 					[comm_range_min, comm_range_max], dtype=torch.long)
 
