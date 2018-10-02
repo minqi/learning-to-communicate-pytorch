@@ -100,13 +100,16 @@ class Arena:
 				# Get prev action per batch
 				prev_action = None
 				if opt.model_action_aware:
-					prev_action = torch.zeros(opt.bs, dtype=torch.long)
-					if step > 1:
-						prev_action = episode.step_records[step - 1].a_t[:, agent_idx]
+					prev_action = torch.ones(opt.bs, dtype=torch.long)
 					if not opt.model_dial:
-						prev_message = torch.zeros(opt.bs, dtype=torch.long)
-						if step > 1:
-							prev_message = episode.step_records[step - 1].a_comm_t[:, agent_idx]
+						prev_message = torch.ones(opt.bs, dtype=torch.long)
+					for b in range(opt.bs):
+						if step > 0 and episode.step_records[step - 1].a_t[b, agent_idx] > 0:
+							prev_action[b] = episode.step_records[step - 1].a_t[b, agent_idx]
+						if not opt.model_dial:
+							if step > 0 and episode.step_records[step - 1].a_comm_t[b, agent_idx] > 0:
+								prev_message[b] = episode.step_records[step - 1].a_comm_t[b, agent_idx]
+					if not opt.model_dial:
 						prev_action = (prev_action, prev_message)
 
 				# Batch agent index for input into model
@@ -200,20 +203,21 @@ class Arena:
 
 		# Collect stats
 		episode.game_stats = self.game.get_stats(episode.steps)
+		# import pdb; pdb.set_trace();
 
 		return episode
 
-	def average_reward(self, episode, normalized=True):			
+	def average_reward(self, episode, normalized=True):
 		reward = episode.r.sum()/(self.opt.bs * self.opt.game_nagents)
 		if normalized:
 			god_reward = episode.game_stats.god_reward.sum()/self.opt.bs
+			# print('avg reward: ', reward.item(), 'god reward:', god_reward.item())
 			if reward == god_reward:
 				reward = 1
 			elif god_reward == 0:
 				reward = 0
 			else:
 				reward = reward/god_reward
-
 		return reward
 
 	def train(self, agents, reset=True):
@@ -239,6 +243,8 @@ class Arena:
 				norm_r = self.average_reward(episode)
 				rewards.append(norm_r)
 				print('TEST episode', e, 'avg reward', norm_r)
+				# import pdb; pdb.set_trace()
 
+		print(opt)
 		plt.plot(np.array(range(len(rewards))), rewards)
 		plt.show()

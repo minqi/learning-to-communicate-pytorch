@@ -6,7 +6,7 @@ import copy
 import numpy as np
 import torch
 from torch import optim
-from torch.nn.utils import clip_grad_norm
+from torch.nn.utils import clip_grad_norm_
 
 from utils.dotdic import DotDic
 from modules.dru import DRU
@@ -42,35 +42,34 @@ class CNetAgent:
 		action_range, comm_range = self.game.get_action_range(step, self.id)
 		action = torch.zeros(opt.bs, dtype=torch.long)
 		action_value = torch.zeros(opt.bs)
-		comm_dtype = opt.model_dial and torch.float or torch.long
-		comm_dtype = torch.float
 		comm_action = torch.zeros(opt.bs).int()
 		comm_vector = torch.zeros(opt.bs, opt.game_comm_bits)
 		comm_value = None
 		if not opt.model_dial:
 			comm_value = torch.zeros(opt.bs)
 
-		should_select_random = self._eps_flip(eps)
+		should_select_random_comm = None
+		should_select_random_a = self._eps_flip(eps)
+		if not opt.model_dial:
+			should_select_random_comm = self._eps_flip(eps)
 
 		# Get action
 		for b in range(opt.bs):
 			q_a_range = range(0, opt.game_action_space)
 			if action_range[b, 1].item() > 0:
 				a_range = range(action_range[b, 0].item(), action_range[b, 1].item() + 1)
-				if should_select_random[b]:
+				if should_select_random_a[b]:
 					action[b] = self._random_choice(a_range)
 					action_value[b] = q[b, action[b]]
 				else:
 					action_value[b], action[b] = q[b, a_range].max(0)
 				action[b] = action[b] + 1
-			elif target:
-				action_value[b], _ = q[b, q_a_range].max(0)
 
 			q_c_range = range(opt.game_action_space, opt.game_action_space_total)
 			if comm_range[b, 1].item() > 0:
 				c_range = range(comm_range[b, 0].item(), comm_range[b, 1].item() + 1)
 				if not opt.model_dial:
-					if should_select_random[b]:
+					if should_select_random_comm[b]:
 						comm_action[b] = self._random_choice(c_range)
 						comm_value[b] = q[b, comm_action[b]]
 						comm_action[b] = comm_action[b] - opt.game_action_space
@@ -81,7 +80,7 @@ class CNetAgent:
 				elif opt.model_dial:
 					comm_vector[b] = self.dru.forward(q[b, q_c_range], train_mode=train_mode) # apply DRU
 			elif not opt.model_dial and target:
-				comm_value[b], _ = q[b, q_c_range].max(0)
+				comm_value[b], _ = q[b, q_a_range].max(0)
 
 		return (action, action_value), (comm_vector, comm_action, comm_value)
 
@@ -92,19 +91,19 @@ class CNetAgent:
 	def episode_loss(self, episode):
 		opt = self.opt
 		total_loss = torch.zeros(opt.bs)
-		for b in range(self.opt.bs):
+		for b in range(opt.bs):
 			b_steps = episode.steps[b].item()
 			for step in range(b_steps):
 				record = episode.step_records[step]
-				for i in range(self.opt.game_nagents):
+				for i in range(opt.game_nagents):
 					td_action = 0
 					td_comm = 0
 					r_t = record.r_t[b][i]
-					q_a_t = record.q_a_t[b][i] 
+					q_a_t = record.q_a_t[b][i]
 					q_comm_t = 0
 
 					if record.a_t[b][i].item() > 0:
-						if record.terminal[b]:
+						if record.terminal[b].item() > 0:
 							td_action = r_t - q_a_t
 						else:
 							next_record = episode.step_records[step + 1]
@@ -115,16 +114,19 @@ class CNetAgent:
 
 					if not opt.model_dial and record.a_comm_t[b][i].item() > 0:
 						q_comm_t = record.q_comm_t[b][i]
-						if record.terminal[b]:
+						if record.terminal[b].item() > 0:
 							td_comm = r_t - q_comm_t
+							# td_comm = r_t - (q_comm_t + record.q_a_t[b][i])/2.0
 						else:
 							next_record = episode.step_records[step + 1]
 							q_next_max = next_record.q_comm_max_t[b][i]
 							if opt.model_avg_q: 
 								q_next_max = (q_next_max + next_record.q_a_max_t[b][i])/2.0
 							td_comm = r_t + opt.gamma * q_next_max - q_comm_t
+							# td_comm = r_t + opt.gamma * q_next_max - (q_comm_t + record.q_a_t[b][i])/2.0
 
-					loss_t = (td_action) ** 2 + (td_comm) ** 2
+					loss_t = (td_action ** 2 + td_comm ** 2)/2.0
+					# loss_t = (td_comm) ** 2
 					total_loss[b] = total_loss[b] + loss_t
 		loss = total_loss.sum()
 		loss = loss/(self.opt.bs * self.opt.game_nagents)
@@ -134,7 +136,7 @@ class CNetAgent:
 		self.optimizer.zero_grad()
 		loss = self.episode_loss(episode)
 		loss.backward(retain_graph=True)
-		clip_grad_norm(parameters=self.model.get_params(), max_norm=10)
+		clip_grad_norm_(parameters=self.model.get_params(), max_norm=10)
 		self.optimizer.step()
 
 		self.episodes_seen = self.episodes_seen + 1

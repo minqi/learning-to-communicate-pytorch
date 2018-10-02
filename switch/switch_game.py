@@ -84,6 +84,8 @@ class SwitchGame:
 				action_range[b] = torch.tensor([0, opt.game_action_space - 1], dtype=torch.long)
 				comm_range[b] = torch.tensor(
 					[opt.game_action_space, opt.game_action_space_total - 1], dtype=torch.long)
+			else:
+				action_range[b] = torch.tensor([0, 1], dtype=torch.long)
 
 		return action_range, comm_range
 
@@ -101,7 +103,7 @@ class SwitchGame:
 		for b in range(self.opt.bs):
 			active_agent_idx = self.active_agent[b][self.step_count].item() - 1
 			if a_t[b][active_agent_idx].item() == self.game_actions.TELL and not self.terminal[b].item():
-				has_been = self.has_been[b][:self.step_count + 1].sum(0).gt(0).sum().item()
+				has_been = self.has_been[b][:self.step_count + 1].sum(0).gt(0).sum(0).item()
 				if has_been == self.opt.game_nagents:
 					self.reward[b] = self.reward_all_live
 				else:
@@ -132,7 +134,7 @@ class SwitchGame:
 	def god_strategy_reward(self, steps):
 		reward = torch.zeros(self.opt.bs)
 		for b in range(self.opt.bs):
-			has_been = self.has_been[b][:steps[b]].sum(0).gt(0).sum().item()
+			has_been = self.has_been[b][:self.opt.nsteps].sum(0).gt(0).sum().item()
 			if has_been == self.opt.game_nagents:
 				reward[b] = self.reward_all_live
 
