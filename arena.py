@@ -20,7 +20,7 @@ class Arena:
 		episode = DotDic({})
 		episode.steps = torch.zeros(opt.bs).int()
 		episode.ended = torch.zeros(opt.bs).int()
-		episode.r = torch.zeros(opt.bs, opt.game_nagents)
+		episode.r = torch.zeros(opt.bs, opt.game_nagents).float()
 		episode.comm_per = torch.zeros(opt.bs)
 		episode.comm_count = 0
 		episode.non_comm_count = 0

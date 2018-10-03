@@ -74,18 +74,19 @@ class SwitchGame:
 
 	def get_action_range(self, step, agent_id):
 		"""
-		Return 0-indexed indices into Q vector for valid actions and communications
+		Return 1-indexed indices into Q vector for valid actions and communications (so 0 represents no-op)
 		"""
 		opt = self.opt
-		action_range = torch.zeros((self.opt.bs, 2), dtype=torch.long)
-		comm_range = torch.zeros((self.opt.bs, 2), dtype=torch.long)
+		action_dtype = torch.long
+		action_range = torch.zeros((self.opt.bs, 2), dtype=action_dtype)
+		comm_range = torch.zeros((self.opt.bs, 2), dtype=action_dtype)
 		for b in range(self.opt.bs): 
 			if self.active_agent[b][step] == agent_id:
-				action_range[b] = torch.tensor([0, opt.game_action_space - 1], dtype=torch.long)
+				action_range[b] = torch.tensor([1, opt.game_action_space], dtype=action_dtype)
 				comm_range[b] = torch.tensor(
-					[opt.game_action_space, opt.game_action_space_total - 1], dtype=torch.long)
+					[opt.game_action_space + 1, opt.game_action_space_total], dtype=action_dtype)
 			else:
-				action_range[b] = torch.tensor([0, 1], dtype=torch.long)
+				action_range[b] = torch.tensor([1, 1], dtype=action_dtype)
 
 		return action_range, comm_range
 

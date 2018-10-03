@@ -53,21 +53,20 @@ class CNetAgent:
 		if not opt.model_dial:
 			should_select_random_comm = self._eps_flip(eps)
 
-		# Get action
+		# Get action + comm
 		for b in range(opt.bs):
 			q_a_range = range(0, opt.game_action_space)
-			if action_range[b, 1].item() > 0:
-				a_range = range(action_range[b, 0].item(), action_range[b, 1].item() + 1)
-				if should_select_random_a[b]:
-					action[b] = self._random_choice(a_range)
-					action_value[b] = q[b, action[b]]
-				else:
-					action_value[b], action[b] = q[b, a_range].max(0)
-				action[b] = action[b] + 1
+			a_range = range(action_range[b, 0].item() - 1, action_range[b, 1].item())
+			if should_select_random_a[b]:
+				action[b] = self._random_choice(a_range)
+				action_value[b] = q[b, action[b]]
+			else:
+				action_value[b], action[b] = q[b, a_range].max(0)
+			action[b] = action[b] + 1
 
 			q_c_range = range(opt.game_action_space, opt.game_action_space_total)
 			if comm_range[b, 1].item() > 0:
-				c_range = range(comm_range[b, 0].item(), comm_range[b, 1].item() + 1)
+				c_range = range(comm_range[b, 0].item() - 1, comm_range[b, 1].item())
 				if not opt.model_dial:
 					if should_select_random_comm[b]:
 						comm_action[b] = self._random_choice(c_range)
@@ -79,7 +78,7 @@ class CNetAgent:
 					comm_action[b] = comm_action[b] + 1
 				elif opt.model_dial:
 					comm_vector[b] = self.dru.forward(q[b, q_c_range], train_mode=train_mode) # apply DRU
-			elif not opt.model_dial and target:
+			elif (not opt.model_dial) and opt.model_avg_q and target:
 				comm_value[b], _ = q[b, q_a_range].max(0)
 
 		return (action, action_value), (comm_vector, comm_action, comm_value)
@@ -103,6 +102,7 @@ class CNetAgent:
 					q_comm_t = 0
 
 					if record.a_t[b][i].item() > 0:
+					# if self.game.active_agent[b][step] - 1 == i:
 						if record.terminal[b].item() > 0:
 							td_action = r_t - q_a_t
 						else:
@@ -111,22 +111,22 @@ class CNetAgent:
 							if not opt.model_dial and opt.model_avg_q:
 								q_next_max = (q_next_max + next_record.q_comm_max_t[b][i])/2.0
 							td_action = r_t + opt.gamma * q_next_max - q_a_t
-
+ 
 					if not opt.model_dial and record.a_comm_t[b][i].item() > 0:
 						q_comm_t = record.q_comm_t[b][i]
 						if record.terminal[b].item() > 0:
 							td_comm = r_t - q_comm_t
-							# td_comm = r_t - (q_comm_t + record.q_a_t[b][i])/2.0
 						else:
 							next_record = episode.step_records[step + 1]
 							q_next_max = next_record.q_comm_max_t[b][i]
 							if opt.model_avg_q: 
 								q_next_max = (q_next_max + next_record.q_a_max_t[b][i])/2.0
 							td_comm = r_t + opt.gamma * q_next_max - q_comm_t
-							# td_comm = r_t + opt.gamma * q_next_max - (q_comm_t + record.q_a_t[b][i])/2.0
 
-					loss_t = (td_action ** 2 + td_comm ** 2)/2.0
-					# loss_t = (td_comm) ** 2
+					if not opt.model_dial:
+						loss_t = (td_action ** 2 + td_comm ** 2)/2.0
+					else:
+						loss_t = td_action ** 2
 					total_loss[b] = total_loss[b] + loss_t
 		loss = total_loss.sum()
 		loss = loss/(self.opt.bs * self.opt.game_nagents)
