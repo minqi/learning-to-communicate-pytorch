@@ -20,7 +20,7 @@ opt = DotDic({
 	'game_comm_sigma': 2,
 	'nsteps': 6,
 	'gamma': 1,
-	'model_dial': False,
+	'model_dial': True,
 	'model_target': True,
 	'model_bn': True,
 	'model_know_share': True,

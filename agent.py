@@ -102,7 +102,6 @@ class CNetAgent:
 					q_comm_t = 0
 
 					if record.a_t[b][i].item() > 0:
-					# if self.game.active_agent[b][step] - 1 == i:
 						if record.terminal[b].item() > 0:
 							td_action = r_t - q_a_t
 						else:
