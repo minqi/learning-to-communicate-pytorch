@@ -17,14 +17,19 @@ class CNetAgent:
 		self.game = game
 		self.model = model
 		self.model_target = target
+
+		for p in self.model_target.parameters():
+			p.requires_grad = False
+
 		self.episodes_seen = 0
 		self.dru = DRU(opt.game_comm_sigma, opt.model_comm_narrow)
 		self.id = index
-		self.optimizer = optim.RMSprop(params=model.get_params(), lr=opt.learningrate, momentum=opt.momentum)
+		self.optimizer = optim.RMSprop(
+			params=model.get_params(), lr=opt.learningrate, momentum=opt.momentum)
 
 	def reset(self):
-		self.model.reset_params()
-		self.model_target.reset_params()
+		self.model.reset_parameters()
+		self.model_target.reset_parameters()
 		self.episodes_seen = 0
 
 	def _eps_flip(self, eps):
@@ -83,10 +88,6 @@ class CNetAgent:
 
 		return (action, action_value), (comm_vector, comm_action, comm_value)
 
-	def forward(t, *inputs):
-		hidden, q = self.model_t[t].forward(*inputs)
-		return hidden, q
-
 	def episode_loss(self, episode):
 		opt = self.opt
 		total_loss = torch.zeros(opt.bs)
@@ -123,9 +124,9 @@ class CNetAgent:
 							td_comm = r_t + opt.gamma * q_next_max - q_comm_t
 
 					if not opt.model_dial:
-						loss_t = (td_action ** 2 + td_comm ** 2)/2.0
+						loss_t = (td_action ** 2 + td_comm ** 2)
 					else:
-						loss_t = td_action ** 2
+						loss_t = (td_action ** 2)
 					total_loss[b] = total_loss[b] + loss_t
 		loss = total_loss.sum()
 		loss = loss/(self.opt.bs * self.opt.game_nagents)
@@ -134,7 +135,7 @@ class CNetAgent:
 	def learn_from_episode(self, episode):
 		self.optimizer.zero_grad()
 		loss = self.episode_loss(episode)
-		loss.backward(retain_graph=True)
+		loss.backward(retain_graph=not self.opt.model_know_share)
 		clip_grad_norm_(parameters=self.model.get_params(), max_norm=10)
 		self.optimizer.step()
 

@@ -2,18 +2,16 @@ import copy
 
 import numpy as np
 import torch
-import matplotlib as mpl
-mpl.use('TkAgg')
-import matplotlib.pyplot as plt
+from torch.autograd import Variable
 
 from utils.dotdic import DotDic
-from modules.dru import DRU
 
 
 class Arena:
 	def __init__(self, opt, game):
 		self.opt = opt
 		self.game = game
+		self.eps = opt.eps
 
 	def create_episode(self):
 		opt = self.opt
@@ -21,9 +19,6 @@ class Arena:
 		episode.steps = torch.zeros(opt.bs).int()
 		episode.ended = torch.zeros(opt.bs).int()
 		episode.r = torch.zeros(opt.bs, opt.game_nagents).float()
-		episode.comm_per = torch.zeros(opt.bs)
-		episode.comm_count = 0
-		episode.non_comm_count = 0
 		episode.step_records = []
 
 		return episode
@@ -51,8 +46,8 @@ class Arena:
 				record.comm_target = record.comm.clone()
 
 		# Track hidden state per time t per agent
-		record.hidden = torch.zeros(opt.bs, opt.game_nagents, opt.model_rnn_size)
-		record.hidden_target = torch.zeros(opt.bs, opt.game_nagents, opt.model_rnn_size)
+		record.hidden = torch.zeros(opt.game_nagents, opt.model_rnn_layers, opt.bs, opt.model_rnn_size)
+		record.hidden_target = torch.zeros(opt.game_nagents, opt.model_rnn_layers, opt.bs, opt.model_rnn_size)
 
 		# Track Q(a_t) and Q(a_max_t) per agent
 		record.q_a_t = torch.zeros(opt.bs, opt.game_nagents)
@@ -69,6 +64,7 @@ class Arena:
 		opt = self.opt
 		game = self.game
 		game.reset()
+		self.eps = self.eps * opt.eps_decay
 
 		step = 0
 		episode = self.create_episode()
@@ -95,7 +91,6 @@ class Arena:
 						comm = comm_lim
 					else:
 						comm[:, agent_idx].zero_()
-				# comm.retain_grad()
 
 				# Get prev action per batch
 				prev_action = None
@@ -116,9 +111,9 @@ class Arena:
 				batch_agent_index = torch.zeros(opt.bs, dtype=torch.long).fill_(agent_idx)
 
 				agent_inputs = {
-					's_t': s_t[:, agent_idx],
+					's_t': episode.step_records[step].s_t[:, agent_idx],
 					'messages': comm,
-					'hidden': episode.step_records[step].hidden[:, agent_idx], # Hidden state
+					'hidden': episode.step_records[step].hidden[agent_idx, :], # Hidden state
 					'prev_action': prev_action,
 					'agent_index': batch_agent_index
 				}
@@ -126,11 +121,11 @@ class Arena:
 
 				# Compute model output (Q function + message bits)
 				hidden_t, q_t = agent.model(**agent_inputs)
-				episode.step_records[step + 1].hidden[:, agent_idx] = hidden_t.squeeze()
+				episode.step_records[step + 1].hidden[agent_idx] = hidden_t.squeeze()
 
 				# Choose next action and comm using eps-greedy selector
 				(action, action_value), (comm_vector, comm_action, comm_value) = \
-					agent.select_action_and_comm(step, q_t, eps=opt.eps, train_mode=train_mode)
+					agent.select_action_and_comm(step, q_t, eps=self.eps, train_mode=train_mode)
 
 				# Store action + comm
 				episode.step_records[step].a_t[:, agent_idx] = action
@@ -162,6 +157,7 @@ class Arena:
 					agent_idx = i - 1
 
 					agent_inputs = episode.step_records[step].agent_inputs[agent_idx]
+					# import pdb; pdb.set_trace()
 					comm_target = agent_inputs.get('messages', None)
 
 					if opt.comm_enabled and opt.model_dial:
@@ -178,16 +174,16 @@ class Arena:
 
 					# comm_target.retain_grad()
 					agent_target_inputs = copy.copy(agent_inputs)
-					agent_target_inputs['messages'] = comm_target
+					agent_target_inputs['messages'] = Variable(comm_target)
 					agent_target_inputs['hidden'] = \
-						episode.step_records[step].hidden_target[:, agent_idx]
-					hidden_target_t, q_target_t = agent.model_target(**agent_target_inputs)
-					episode.step_records[step + 1].hidden_target[:, agent_idx] = \
+						episode.step_records[step].hidden_target[agent_idx, :]
+					hidden_target_t, q_target_t = agent_target.model_target(**agent_target_inputs)
+					episode.step_records[step + 1].hidden_target[agent_idx] = \
 						hidden_target_t.squeeze()
 
 					# Choose next arg max action and comm
 					(action, action_value), (comm_vector, comm_action, comm_value) = \
-						agent.select_action_and_comm(step, q_target_t, eps=0, target=True, train_mode=True)
+						agent_target.select_action_and_comm(step, q_target_t, eps=0, target=True, train_mode=True)
 
 					# save target actions, comm, and q_a_t, q_a_max_t
 					episode.step_records[step].q_a_max_t[:, agent_idx] = action_value
@@ -203,7 +199,6 @@ class Arena:
 
 		# Collect stats
 		episode.game_stats = self.game.get_stats(episode.steps)
-		# import pdb; pdb.set_trace();
 
 		return episode
 
@@ -211,16 +206,15 @@ class Arena:
 		reward = episode.r.sum()/(self.opt.bs * self.opt.game_nagents)
 		if normalized:
 			god_reward = episode.game_stats.god_reward.sum()/self.opt.bs
-			# print('avg reward: ', reward.item(), 'god reward:', god_reward.item())
 			if reward == god_reward:
 				reward = 1
 			elif god_reward == 0:
 				reward = 0
 			else:
 				reward = reward/god_reward
-		return reward
+		return float(reward)
 
-	def train(self, agents, reset=True):
+	def train(self, agents, reset=True, verbose=False, test_callback=None):
 		opt = self.opt
 		if reset:
 			for agent in agents[1:]:
@@ -231,7 +225,8 @@ class Arena:
 			# run episode
 			episode = self.run_episode(agents, train_mode=True)
 			norm_r = self.average_reward(episode)
-			print('episode', e, 'avg reward', norm_r)
+			if verbose:
+				print('train epoch:', e, 'avg steps:', episode.steps.float().mean().item(), 'avg reward:', norm_r)
 			if opt.model_know_share:
 				agents[1].learn_from_episode(episode)
 			else:
@@ -242,9 +237,6 @@ class Arena:
 				episode = self.run_episode(agents, train_mode=False)
 				norm_r = self.average_reward(episode)
 				rewards.append(norm_r)
-				print('TEST episode', e, 'avg reward', norm_r)
-				# import pdb; pdb.set_trace()
-
-		print(opt)
-		plt.plot(np.array(range(len(rewards))), rewards)
-		plt.show()
+				if test_callback:
+					test_callback(e, norm_r)
+				print('TEST EPOCH:', e, 'avg steps:', episode.steps.float().mean().item(), 'avg reward:', norm_r)

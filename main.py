@@ -1,4 +1,6 @@
-import copy
+import copy, argparse, csv, json, datetime, os
+from functools import partial
+from pathlib import Path
 
 from utils.dotdic import DotDic
 from arena import Arena
@@ -11,51 +13,16 @@ Play communication games
 """
 
 # configure opts for Switch game with 3 DIAL agents
-opt = DotDic({
-	'game': 'switch',
-	'game_nagents': 3,
-	'game_action_space': 2,
-	'game_comm_limited': True,
-	'game_comm_bits': 1,
-	'game_comm_sigma': 2,
-	'nsteps': 6,
-	'gamma': 1,
-	'model_dial': True,
-	'model_target': True,
-	'model_bn': True,
-	'model_know_share': True,
-	'model_action_aware': True,
-	'model_rnn': 'gru',
-	'model_rnn_size': 128,
-	'model_rnn_dropout_rate': 0,
-	'bs': 32,
-	'learningrate': 2e-4,
-	'momentum': 0.95,
-	'eps': 0.05,
-	'nepisodes': 3000,
-	'step': 100,
-	'step_test': 10,
-	'step_target': 100,
-	'cuda': 0
-})
-
 def init_action_and_comm_bits(opt):
 	opt.comm_enabled = opt.game_comm_bits > 0 and opt.game_nagents > 1
-
-	opt.model_comm_narrow = opt.model_dial
-	if opt.model_rnn == 'lstm':
-		opt.model_rnn_states = 2*opt.model_rnn_layers
-	elif opt.model_rnn == 'gru':
-		opt.model_rnn_states = opt.model_rnn_layers
-
+	if not opt.model_comm_narrow:
+		opt.model_comm_narrow = opt.model_dial
 	if not opt.model_comm_narrow and opt.game_comm_bits > 0:
 		opt.game_comm_bits = 2 ** opt.game_comm_bits
-
 	if opt.comm_enabled:
 		opt.game_action_space_total = opt.game_action_space + opt.game_comm_bits
 	else:
 		opt.game_action_space_total = opt.game_action_space
-
 	return opt
 
 def init_opt(opt):
@@ -63,6 +30,8 @@ def init_opt(opt):
 		opt.model_rnn_layers = 2
 	if not opt.model_avg_q:
 		opt.model_avg_q = True
+	if not opt.eps_decay:
+		opt.eps_decay = 1.0
 	opt = init_action_and_comm_bits(opt)
 	return opt
 
@@ -91,7 +60,11 @@ def create_agents(opt, game):
 			cnet_target = copy.deepcopy(cnet)
 	return agents
 
-def main(opt):
+def save_episode_and_reward_to_csv(file, writer, e, r):
+	writer.writerow({'episode': e, 'reward': r})
+	file.flush()
+
+def run_trial(opt, result_path=None, verbose=False):
 	# Initialize action and comm bit settings
 	opt = init_opt(opt)
 
@@ -99,10 +72,39 @@ def main(opt):
 	agents = create_agents(opt, game)
 	arena = Arena(opt, game)
 
-	arena.train(agents)
+	test_callback = None
+	if result_path:
+		result_out = open(result_path, 'w')
+		csv_meta = '#' + json.dumps(opt) + '\n'
+		result_out.write(csv_meta)
+		writer = csv.DictWriter(result_out, fieldnames=['episode', 'reward'])
+		writer.writeheader()
+		test_callback = partial(save_episode_and_reward_to_csv, result_out, writer)
+	arena.train(agents, verbose=verbose, test_callback=test_callback)
 
-	# Report model statistics
+	if result_path:
+		result_out.close()
 
 if __name__ == '__main__':
-	main(opt)
+	parser = argparse.ArgumentParser()
+	parser.add_argument('-c', '--config_path', type=str, help='path to existing options file')
+	parser.add_argument('-r', '--results_path', type=str, help='path to results directory')
+	parser.add_argument('-n', '--ntrials', type=int, default=1, help='number of trials to run')
+	parser.add_argument('-s', '--start_index', type=int, default=0, help='starting index for trial output')
+	parser.add_argument('-v', '--verbose', action='store_true', help='prints training epoch rewards if set')
+	args = parser.parse_args()
+
+	opt = DotDic(json.loads(open(args.config_path, 'r').read()))
+
+	result_path = None
+	if args.results_path:
+		result_path = args.config_path and os.path.join(args.results_path, Path(args.config_path).stem) or \
+			os.path.join(args.results_path, 'result-', datetime.datetime.now().isoformat())
+
+	for i in range(args.ntrials):
+		trial_result_path = None
+		if result_path:
+			trial_result_path = result_path + '_' + str(i + args.start_index) + '.csv'
+		trial_opt = copy.deepcopy(opt)
+		run_trial(trial_opt, result_path=trial_result_path, verbose=args.verbose)
 
