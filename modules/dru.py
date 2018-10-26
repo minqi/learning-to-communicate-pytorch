@@ -15,7 +15,20 @@ class DRU:
 		return m_reg
 
 	def discretize(self, m):
-		return torch.sigmoid((m.gt(0.5).float() - 0.5) * self.sigma * 20)
+		if self.comm_narrow:
+			return (m.gt(0.5).float() - 0.5).sign().float()
+		else:
+			m_ = torch.zeros_like(m)
+			if m.dim() == 1:      
+				_, idx = m.max(0)
+				m_[idx] = 1.
+			elif m.dim() == 2:      
+				_, idx = m.max(1)
+				for b in range(idx.size(0)):
+					m_[b, idx[b]] = 1.
+			else:
+				raise ValueError('wrong message shape')
+			return m_
 
 	def forward(self, m, train_mode):
 		if train_mode:

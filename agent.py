@@ -81,7 +81,7 @@ class CNetAgent:
 						comm_value[b], comm_action[b] = q[b, c_range].max(0)
 					comm_vector[b][comm_action[b]] = 1
 					comm_action[b] = comm_action[b] + 1
-				elif opt.model_dial:
+				else:
 					comm_vector[b] = self.dru.forward(q[b, q_c_range], train_mode=train_mode) # apply DRU
 			elif (not opt.model_dial) and opt.model_avg_q and target:
 				comm_value[b], _ = q[b, q_a_range].max(0)
