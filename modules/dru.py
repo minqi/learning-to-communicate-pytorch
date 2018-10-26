@@ -16,7 +16,7 @@ class DRU:
 
 	def discretize(self, m):
 		if self.comm_narrow:
-			return (m.gt(0.5).float() - 0.5).sign().float()
+			return torch.sigmoid((m.gt(0.5).float() - 0.5) * self.sigma * 20)
 		else:
 			m_ = torch.zeros_like(m)
 			if m.dim() == 1:      
