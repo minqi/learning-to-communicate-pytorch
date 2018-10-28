@@ -22,7 +22,7 @@ class CNetAgent:
 			p.requires_grad = False
 
 		self.episodes_seen = 0
-		self.dru = DRU(opt.game_comm_sigma, opt.model_comm_narrow)
+		self.dru = DRU(opt.game_comm_sigma, opt.model_comm_narrow, opt.game_comm_hard)
 		self.id = index
 		self.optimizer = optim.RMSprop(
 			params=model.get_params(), lr=opt.learningrate, momentum=opt.momentum)
