@@ -15,7 +15,7 @@ Play communication games
 # configure opts for Switch game with 3 DIAL agents
 def init_action_and_comm_bits(opt):
 	opt.comm_enabled = opt.game_comm_bits > 0 and opt.game_nagents > 1
-	if not opt.model_comm_narrow:
+	if opt.model_comm_narrow is None:
 		opt.model_comm_narrow = opt.model_dial
 	if not opt.model_comm_narrow and opt.game_comm_bits > 0:
 		opt.game_comm_bits = 2 ** opt.game_comm_bits
@@ -28,9 +28,9 @@ def init_action_and_comm_bits(opt):
 def init_opt(opt):
 	if not opt.model_rnn_layers:
 		opt.model_rnn_layers = 2
-	if not opt.model_avg_q:
+	if opt.model_avg_q is None:
 		opt.model_avg_q = True
-	if not opt.eps_decay:
+	if opt.eps_decay is None:
 		opt.eps_decay = 1.0
 	opt = init_action_and_comm_bits(opt)
 	return opt
